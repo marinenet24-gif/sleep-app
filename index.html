@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>寝落ち防止チェッカー</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4CAF50">
+
+<style>
+body { font-family: sans-serif; background: #f0f2f5; text-align: center; padding: 20px; }
+.card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px; }
+button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 10px; }
+.btn-on { background: #4CAF50; color: white; }
+</style>
+</head>
+
+<body>
+
+<div class="card">
+<h1 id="statusMsg">夜のルーティンを開始</h1>
+
+<button id="bathBtn" onclick="complete('bath')">風呂</button>
+<button id="medsBtn" onclick="complete('meds')">服薬</button>
+<button id="phoneBtn" onclick="complete('phone')">スマホ終了</button>
+
+<button onclick="showAnalysis()">分析</button>
+</div>
+
+<script>
+const DEADLINE="23:30";
+
+let status=JSON.parse(localStorage.getItem('status'))||{bath:false,meds:false,phone:false};
+let logs=JSON.parse(localStorage.getItem('logs'))||[];
+
+function save(){localStorage.setItem('status',JSON.stringify(status));}
+
+function vibrate(p=[100]){if(navigator.vibrate)navigator.vibrate(p);}
+
+function complete(type){
+ const now=new Date();
+ status[type]=true;
+ save();
+ vibrate([50,50,50]);
+
+ document.getElementById(type+"Btn").className="btn-on";
+
+ if(status.bath&&status.meds&&status.phone){
+   const time=now.toTimeString().slice(0,5);
+   logs.push({date:now.toISOString().slice(0,10),finish:time,success:time<=DEADLINE});
+   localStorage.setItem('logs',JSON.stringify(logs));
+   document.getElementById("statusMsg").innerText="おやすみなさい";
+   vibrate([200,100,200]);
+ }
+}
+
+function analyze(){
+ if(logs.length<3)return"データ不足";
+ const ok=logs.filter(l=>l.success).length/logs.length;
+ return ok>0.8?"良好":ok>0.5?"普通":"改善必要";
+}
+
+function showAnalysis(){alert(analyze());}
+
+if('serviceWorker'in navigator){
+ navigator.serviceWorker.register('sw.js');
+}
+</script>
+
+</body>
+</html>
