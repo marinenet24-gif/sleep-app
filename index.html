@@ -138,3 +138,36 @@ if('serviceWorker'in navigator){
 
 </body>
 </html>
+
+<script>
+// ===== Service Worker登録＋更新制御 =====
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').then(reg => {
+
+    // 新しいSWが来たとき
+    reg.addEventListener('updatefound', () => {
+      const newWorker = reg.installing;
+
+      newWorker.addEventListener('statechange', () => {
+        // 既にページを制御しているSWがあり、かつ新SWが待機状態になったら
+        if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+
+          // ユーザーに更新確認（任意で自動更新にしてもよい）
+          if (confirm('アプリの更新があります。今すぐ反映しますか？')) {
+            newWorker.postMessage('SKIP_WAITING');
+          }
+        }
+      });
+    });
+
+    // 新SWが有効化されたら自動リロード（1回だけ）
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+  });
+}
+</script>
