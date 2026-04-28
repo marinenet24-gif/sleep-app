@@ -1,8 +1,13 @@
-const CACHE_NAME='sleep-v1';
+const CACHE_NAME='sleep-v2';
 
 self.addEventListener('install',e=>{
  e.waitUntil(
-  caches.open(CACHE_NAME).then(c=>c.addAll(['./','./index.html']))
+  caches.open(CACHE_NAME).then(c=>c.addAll([
+    './',
+    './index.html',
+    './manifest.json',
+    'https://cdn.jsdelivr.net/npm/chart.js'
+  ]))
  );
 });
 

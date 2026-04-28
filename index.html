@@ -8,24 +8,45 @@
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#4CAF50">
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
 <style>
 body { font-family: sans-serif; background: #f0f2f5; text-align: center; padding: 20px; }
 .card { background: white; border-radius: 15px; padding: 20px; margin-bottom: 20px; }
-button { width: 100%; padding: 15px; margin: 10px 0; border-radius: 10px; }
+button { width: 100%; padding: 12px; margin: 8px 0; border-radius: 10px; }
 .btn-on { background: #4CAF50; color: white; }
+.grid { display:grid; grid-template-columns: repeat(7,1fr); gap:5px; }
+.day { padding:8px; border-radius:5px; font-size:12px; }
+.good { background:#4CAF50; color:white; }
+.bad { background:#ccc; }
 </style>
 </head>
 
 <body>
 
 <div class="card">
-<h1 id="statusMsg">夜のルーティンを開始</h1>
+<h2 id="statusMsg">夜のルーティン</h2>
 
 <button id="bathBtn" onclick="complete('bath')">風呂</button>
 <button id="medsBtn" onclick="complete('meds')">服薬</button>
 <button id="phoneBtn" onclick="complete('phone')">スマホ終了</button>
 
-<button onclick="showAnalysis()">分析</button>
+<button onclick="showAnalysis()">AI分析</button>
+</div>
+
+<div class="card">
+<h3>就寝時刻（折れ線）</h3>
+<canvas id="lineChart"></canvas>
+</div>
+
+<div class="card">
+<h3>成功率ヒートマップ（30日）</h3>
+<div id="heatmap" class="grid"></div>
+</div>
+
+<div class="card">
+<h3>月間カレンダー</h3>
+<div id="calendar" class="grid"></div>
 </div>
 
 <script>
@@ -35,33 +56,80 @@ let status=JSON.parse(localStorage.getItem('status'))||{bath:false,meds:false,ph
 let logs=JSON.parse(localStorage.getItem('logs'))||[];
 
 function save(){localStorage.setItem('status',JSON.stringify(status));}
-
 function vibrate(p=[100]){if(navigator.vibrate)navigator.vibrate(p);}
 
 function complete(type){
  const now=new Date();
  status[type]=true;
  save();
- vibrate([50,50,50]);
-
  document.getElementById(type+"Btn").className="btn-on";
 
  if(status.bath&&status.meds&&status.phone){
    const time=now.toTimeString().slice(0,5);
    logs.push({date:now.toISOString().slice(0,10),finish:time,success:time<=DEADLINE});
    localStorage.setItem('logs',JSON.stringify(logs));
-   document.getElementById("statusMsg").innerText="おやすみなさい";
+   document.getElementById("statusMsg").innerText="完了";
    vibrate([200,100,200]);
  }
 }
 
-function analyze(){
- if(logs.length<3)return"データ不足";
- const ok=logs.filter(l=>l.success).length/logs.length;
- return ok>0.8?"良好":ok>0.5?"普通":"改善必要";
+function renderLine(){
+ const last=logs.slice(-7);
+ if(last.length==0) return;
+
+ const labels=last.map(l=>l.date.slice(5));
+ const data=last.map(l=>parseInt(l.finish.split(":")[0]));
+
+ new Chart(document.getElementById('lineChart'),{
+  type:'line',
+  data:{labels,datasets:[{label:'就寝時刻(時)',data}]}
+ });
 }
 
-function showAnalysis(){alert(analyze());}
+function renderHeatmap(){
+ const el=document.getElementById('heatmap');
+ el.innerHTML="";
+ logs.slice(-30).forEach(l=>{
+   const d=document.createElement("div");
+   d.className="day "+(l.success?"good":"bad");
+   d.innerText=l.date.slice(5);
+   el.appendChild(d);
+ });
+}
+
+function renderCalendar(){
+ const el=document.getElementById('calendar');
+ el.innerHTML="";
+ logs.slice(-30).forEach(l=>{
+   const d=document.createElement("div");
+   d.className="day "+(l.success?"good":"bad");
+   d.innerText=l.date.slice(8);
+   el.appendChild(d);
+ });
+}
+
+function analyzeAI(){
+ if(logs.length<3) return "データ不足";
+
+ const late=logs.filter(l=>!l.success).length;
+ const rate=((logs.length-late)/logs.length*100).toFixed(0);
+
+ let msg=`成功率${rate}%\n`;
+
+ if(rate<50) msg+="→ 生活リズムが不安定\n";
+ if(rate<80) msg+="→ スマホ終了を早めると改善\n";
+ else msg+="→ 良好な習慣";
+
+ return msg;
+}
+
+function showAnalysis(){alert(analyzeAI());}
+
+window.onload=()=>{
+ renderLine();
+ renderHeatmap();
+ renderCalendar();
+};
 
 if('serviceWorker'in navigator){
  navigator.serviceWorker.register('sw.js');
