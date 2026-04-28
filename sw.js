@@ -1,4 +1,4 @@
-const CACHE_NAME='sleep-v6';
+const CACHE_NAME='sleep-v7';
 
 const ASSETS=[
  './',
@@ -8,6 +8,7 @@ const ASSETS=[
 ];
 
 self.addEventListener('install',e=>{
+ self.skipWaiting(); // ★強制切り替え
  e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(ASSETS)));
 });
 
@@ -25,8 +26,4 @@ self.addEventListener('fetch',e=>{
  e.respondWith(
   caches.match(e.request).then(r=>r||fetch(e.request))
  );
-});
-
-self.addEventListener('message',e=>{
- if(e.data==='SKIP_WAITING') self.skipWaiting();
 });
