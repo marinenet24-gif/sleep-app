@@ -1,4 +1,4 @@
-const CACHE_NAME='sleep-v5';
+const CACHE_NAME='sleep-v4';
 
 const ASSETS=[
  './',
