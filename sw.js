@@ -1,18 +1,24 @@
-const CACHE_NAME='sleep-v4';
+const CACHE_NAME='sleep-v5';
+
+const ASSETS=[
+ './',
+ './index.html',
+ './manifest.json',
+ 'https://cdn.jsdelivr.net/npm/chart.js'
+];
 
 self.addEventListener('install',e=>{
- e.waitUntil(
-  caches.open(CACHE_NAME).then(c=>c.addAll([
-    './',
-    './index.html',
-    './manifest.json',
-    'https://cdn.jsdelivr.net/npm/chart.js'
-  ]))
- );
+ e.waitUntil(caches.open(CACHE_NAME).then(c=>c.addAll(ASSETS)));
 });
 
 self.addEventListener('activate',e=>{
- e.waitUntil(self.clients.claim());
+ e.waitUntil(
+  caches.keys().then(keys=>{
+    return Promise.all(
+      keys.map(k=>k!==CACHE_NAME&&caches.delete(k))
+    );
+  }).then(()=>self.clients.claim())
+ );
 });
 
 self.addEventListener('fetch',e=>{
@@ -21,17 +27,6 @@ self.addEventListener('fetch',e=>{
  );
 });
 
-// ===== 通知クリック =====
-self.addEventListener('notificationclick', event => {
-  event.notification.close();
-  event.waitUntil(
-    clients.openWindow('./index.html')
-  );
-});
-
-// ===== 更新制御 =====
-self.addEventListener('message', event => {
-  if (event.data === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
+self.addEventListener('message',e=>{
+ if(e.data==='SKIP_WAITING') self.skipWaiting();
 });
