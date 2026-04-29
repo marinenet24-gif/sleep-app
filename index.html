@@ -3,182 +3,176 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>寝落ち防止チェッカー</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<title>夜のルーティーンアプリ</title>
 
 <style>
-body { font-family:sans-serif; background:#f0f2f5; text-align:center; padding:20px;}
-.card { background:white; border-radius:15px; padding:20px; margin-bottom:20px;}
+body {
+  font-family: sans-serif;
+  background: #111;
+  color: #fff;
+  text-align: center;
+}
 
-button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px;}
+button {
+  background: #444;
+  color: #fff;
+  border: none;
+  padding: 12px;
+  margin: 8px;
+  width: 80%;
+  font-size: 16px;
+}
 
-.btn-on { background:#4CAF50; color:white;}
-.btn-strong { background:#ff4444; color:white; font-weight:bold;}
+.incomplete {
+  background: #3a0000;
+  animation: pulse 2s infinite;
+}
 
-.grid { display:grid; grid-template-columns:repeat(7,1fr); gap:5px;}
-.day { padding:6px; font-size:11px; border-radius:5px;}
-.good { background:#4CAF50; color:white;}
-.bad { background:#ccc;}
+@keyframes pulse {
+  0% { opacity: 1; }
+  50% { opacity: 0.85; }
+  100% { opacity: 1; }
+}
 
-#streak { font-size:24px; font-weight:bold; color:#ff4444;}
+.phone-off {
+  font-size: 1.3em;
+  border: 2px solid #fff;
+}
+
+.spacer {
+  height: 48px;
+}
 </style>
 </head>
 
 <body>
 
-<div class="card">
-<h2 id="statusMsg">夜のルーティン</h2>
+<h2>夜のルーティーン</h2>
 
-<div id="streak">🔥 連続成功 0日</div>
+<button id="bathBtn" onclick="toggleTask('bath')">風呂</button>
+<button id="medicineBtn" onclick="toggleTask('medicine')">服薬</button>
+<button id="phoneBtn" class="phone-off" onclick="toggleTask('phoneOff')">スマホ終了</button>
 
-<button id="bathBtn" onclick="complete('bath')">風呂</button>
-<button id="medsBtn" onclick="complete('meds')">服薬</button>
-<button id="phoneBtn" onclick="complete('phone')">スマホ終了</button>
+<hr>
 
-<button class="btn-strong" onclick="undoLast()">1つ戻す</button>
 <button onclick="resetToday()">今日リセット</button>
 
-<button onclick="showAnalysis()">AI分析</button>
-</div>
+<div class="spacer"></div>
 
-<div class="card">
-<h3>就寝時刻（折れ線）</h3>
-<canvas id="lineChart"></canvas>
-</div>
+<button onclick="undoLast()">1つ戻す</button>
 
-<div class="card">
-<h3>ヒートマップ</h3>
-<div id="heatmap" class="grid"></div>
-</div>
+<h3 id="streak"></h3>
+<div id="message"></div>
 
 <script>
-const DEADLINE="23:30";
+let actionStack = [];
 
-let status=JSON.parse(localStorage.getItem('status'))||{bath:false,meds:false,phone:false};
-let logs=JSON.parse(localStorage.getItem('logs'))||[];
-let history=[];
-
-// ===== 保存 =====
-function save(){localStorage.setItem('status',JSON.stringify(status));}
-
-// ===== ストリーク計算 =====
-function calcStreak(){
- let streak=0;
- for(let i=logs.length-1;i>=0;i--){
-   if(logs[i].success) streak++;
-   else break;
- }
- return streak;
+function getTodayKey() {
+  return new Date().toISOString().split("T")[0];
 }
 
-// ===== 表示 =====
-function renderStreak(){
- const s=calcStreak();
- document.getElementById("streak").innerText=`🔥 連続成功 ${s}日`;
-
- if(s>=3){
-   document.getElementById("streak").style.color="#4CAF50";
- }
+function getLogs() {
+  return JSON.parse(localStorage.getItem("logs") || "{}");
 }
 
-// ===== 操作 =====
-function complete(type){
- history.push(JSON.stringify(status));
- status[type]=true;
- save();
-
- document.getElementById(type+"Btn").className="btn-on";
-
- if(status.bath&&status.meds&&status.phone){
-   const now=new Date();
-   const time=now.toTimeString().slice(0,5);
-
-   logs.push({
-     date:now.toISOString().slice(0,10),
-     finish:time,
-     success:time<=DEADLINE
-   });
-
-   localStorage.setItem('logs',JSON.stringify(logs));
-   document.getElementById("statusMsg").innerText="完了";
-
-   renderStreak();
- }
+function saveLogs(logs) {
+  localStorage.setItem("logs", JSON.stringify(logs));
 }
 
-// ===== 戻す =====
-function undoLast(){
- if(history.length===0)return;
- status=JSON.parse(history.pop());
- save();
- location.reload();
+function toggleTask(taskName) {
+  const today = getTodayKey();
+  const logs = getLogs();
+
+  const prev = logs[today]?.[taskName] || false;
+
+  actionStack.push({
+    date: today,
+    task: taskName,
+    prevValue: prev
+  });
+
+  logs[today] = logs[today] || {};
+  logs[today][taskName] = !prev;
+
+  saveLogs(logs);
+  renderAll();
 }
 
-// ===== リセット =====
-function resetToday(){
- if(confirm("今日リセットしますか？")){
-   status={bath:false,meds:false,phone:false};
-   save();
-   location.reload();
- }
+function undoLast() {
+  const last = actionStack.pop();
+  if (!last) return;
+
+  const logs = getLogs();
+  logs[last.date] = logs[last.date] || {};
+  logs[last.date][last.task] = last.prevValue;
+
+  saveLogs(logs);
+  renderAll();
 }
 
-// ===== グラフ =====
-function renderLine(){
- const last=logs.slice(-7);
- if(last.length==0)return;
+function resetToday() {
+  const today = getTodayKey();
+  const logs = getLogs();
 
- const labels=last.map(l=>l.date.slice(5));
- const data=last.map(l=>parseInt(l.finish.split(":")[0]));
+  delete logs[today];
 
- new Chart(document.getElementById('lineChart'),{
-  type:'line',
-  data:{labels,datasets:[{label:'就寝時刻',data}]}
- });
+  saveLogs(logs);
+  renderAll();
 }
 
-// ===== ヒートマップ =====
-function renderHeatmap(){
- const el=document.getElementById('heatmap');
- el.innerHTML="";
- logs.slice(-30).forEach(l=>{
-   const d=document.createElement("div");
-   d.className="day "+(l.success?"good":"bad");
-   d.innerText=l.date.slice(5);
-   el.appendChild(d);
- });
+function calculateStreak(logs) {
+  const dates = Object.keys(logs).sort().reverse();
+  let streak = 0;
+
+  for (let d of dates) {
+    const day = logs[d];
+    if (day.bath && day.medicine && day.phoneOff) {
+      streak++;
+    } else {
+      break;
+    }
+  }
+  return streak;
 }
 
-// ===== AI分析 =====
-function analyzeAI(){
- if(logs.length<3)return"データ不足";
+function renderAll() {
+  const logs = getLogs();
+  const today = getTodayKey();
+  const todayData = logs[today] || {};
 
- const rate=((logs.filter(l=>l.success).length/logs.length)*100).toFixed(0);
+  updateButton("bathBtn", todayData.bath);
+  updateButton("medicineBtn", todayData.medicine);
+  updateButton("phoneBtn", todayData.phoneOff);
 
- let msg=`成功率${rate}%\n`;
+  const streak = calculateStreak(logs);
+  document.getElementById("streak").innerText = "ストリーク: " + streak;
 
- if(rate<50) msg+="生活崩壊レベル";
- else if(rate<80) msg+="スマホ制限が鍵";
- else msg+="習慣化成功";
+  const complete = todayData.bath && todayData.medicine && todayData.phoneOff;
 
- return msg;
+  const msg = document.getElementById("message");
+
+  if (complete) {
+    msg.innerText = "完了：習慣維持成功";
+  } else if (streak >= 3) {
+    msg.innerText = "警告：連続記録が途切れます";
+  } else {
+    msg.innerText = "";
+  }
 }
 
-function showAnalysis(){alert(analyzeAI());}
+function updateButton(id, done) {
+  const btn = document.getElementById(id);
 
-// ===== 初期表示 =====
-window.onload=()=>{
- renderLine();
- renderHeatmap();
- renderStreak();
+  if (done) {
+    btn.classList.remove("incomplete");
+    btn.style.background = "#2e7d32";
+  } else {
+    btn.style.background = "";
+    btn.classList.add("incomplete");
+  }
+}
 
- // 未完了なら強制誘導UI
- if(!(status.bath&&status.meds&&status.phone)){
-   document.body.style.background="#fff3cd";
-   document.getElementById("statusMsg").innerText="未完了：今すぐ行動";
- }
-};
+renderAll();
 </script>
 
 </body>
