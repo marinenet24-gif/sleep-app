@@ -5,20 +5,23 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>寝落ち防止チェッカー</title>
 
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4CAF50">
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { font-family:sans-serif; background:#f0f2f5; text-align:center; padding:20px;}
 .card { background:white; border-radius:15px; padding:20px; margin-bottom:20px;}
-button { width:100%; padding:10px; margin:5px 0; border-radius:10px;}
+
+button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px;}
+
 .btn-on { background:#4CAF50; color:white;}
+.btn-strong { background:#ff4444; color:white; font-weight:bold;}
+
 .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:5px;}
 .day { padding:6px; font-size:11px; border-radius:5px;}
 .good { background:#4CAF50; color:white;}
 .bad { background:#ccc;}
-.warn { background:#ff9800; color:white;}
+
+#streak { font-size:24px; font-weight:bold; color:#ff4444;}
 </style>
 </head>
 
@@ -27,11 +30,13 @@ button { width:100%; padding:10px; margin:5px 0; border-radius:10px;}
 <div class="card">
 <h2 id="statusMsg">夜のルーティン</h2>
 
+<div id="streak">🔥 連続成功 0日</div>
+
 <button id="bathBtn" onclick="complete('bath')">風呂</button>
 <button id="medsBtn" onclick="complete('meds')">服薬</button>
 <button id="phoneBtn" onclick="complete('phone')">スマホ終了</button>
 
-<button onclick="undoLast()">1つ戻す</button>
+<button class="btn-strong" onclick="undoLast()">1つ戻す</button>
 <button onclick="resetToday()">今日リセット</button>
 
 <button onclick="showAnalysis()">AI分析</button>
@@ -43,41 +48,43 @@ button { width:100%; padding:10px; margin:5px 0; border-radius:10px;}
 </div>
 
 <div class="card">
-<h3>ヒートマップ（30日）</h3>
+<h3>ヒートマップ</h3>
 <div id="heatmap" class="grid"></div>
-</div>
-
-<div class="card">
-<h3>カレンダー</h3>
-<div id="calendar" class="grid"></div>
 </div>
 
 <script>
 const DEADLINE="23:30";
-const ALERT_TIME="23:00";
 
 let status=JSON.parse(localStorage.getItem('status'))||{bath:false,meds:false,phone:false};
 let logs=JSON.parse(localStorage.getItem('logs'))||[];
 let history=[];
 
+// ===== 保存 =====
 function save(){localStorage.setItem('status',JSON.stringify(status));}
 
-function vibrate(p=[100]){if(navigator.vibrate)navigator.vibrate(p);}
+// ===== ストリーク計算 =====
+function calcStreak(){
+ let streak=0;
+ for(let i=logs.length-1;i>=0;i--){
+   if(logs[i].success) streak++;
+   else break;
+ }
+ return streak;
+}
 
-// ===== 通知（時間チェック）=====
-function checkTime(){
- const now=new Date().toTimeString().slice(0,5);
- if(now===ALERT_TIME){
-   document.getElementById("statusMsg").innerText="そろそろ寝る準備";
-   vibrate([300,100,300]);
+// ===== 表示 =====
+function renderStreak(){
+ const s=calcStreak();
+ document.getElementById("streak").innerText=`🔥 連続成功 ${s}日`;
+
+ if(s>=3){
+   document.getElementById("streak").style.color="#4CAF50";
  }
 }
-setInterval(checkTime,60000);
 
 // ===== 操作 =====
 function complete(type){
  history.push(JSON.stringify(status));
-
  status[type]=true;
  save();
 
@@ -86,14 +93,21 @@ function complete(type){
  if(status.bath&&status.meds&&status.phone){
    const now=new Date();
    const time=now.toTimeString().slice(0,5);
-   logs.push({date:now.toISOString().slice(0,10),finish:time,success:time<=DEADLINE});
+
+   logs.push({
+     date:now.toISOString().slice(0,10),
+     finish:time,
+     success:time<=DEADLINE
+   });
+
    localStorage.setItem('logs',JSON.stringify(logs));
    document.getElementById("statusMsg").innerText="完了";
-   vibrate([200,100,200]);
+
+   renderStreak();
  }
 }
 
-// ===== 誤操作対策 =====
+// ===== 戻す =====
 function undoLast(){
  if(history.length===0)return;
  status=JSON.parse(history.pop());
@@ -101,8 +115,9 @@ function undoLast(){
  location.reload();
 }
 
+// ===== リセット =====
 function resetToday(){
- if(confirm("今日の状態をリセットしますか？")){
+ if(confirm("今日リセットしますか？")){
    status={bath:false,meds:false,phone:false};
    save();
    location.reload();
@@ -112,7 +127,7 @@ function resetToday(){
 // ===== グラフ =====
 function renderLine(){
  const last=logs.slice(-7);
- if(last.length===0)return;
+ if(last.length==0)return;
 
  const labels=last.map(l=>l.date.slice(5));
  const data=last.map(l=>parseInt(l.finish.split(":")[0]));
@@ -135,59 +150,34 @@ function renderHeatmap(){
  });
 }
 
-// ===== カレンダー =====
-function renderCalendar(){
- const el=document.getElementById('calendar');
- el.innerHTML="";
- logs.slice(-30).forEach(l=>{
-   const d=document.createElement("div");
-   d.className="day "+(l.success?"good":"good");
-   d.innerText=l.date.slice(8);
-   el.appendChild(d);
- });
-}
-
 // ===== AI分析 =====
 function analyzeAI(){
  if(logs.length<3)return"データ不足";
 
- const late=logs.filter(l=>!l.success).length;
- const rate=((logs.length-late)/logs.length*100).toFixed(0);
+ const rate=((logs.filter(l=>l.success).length/logs.length)*100).toFixed(0);
 
  let msg=`成功率${rate}%\n`;
 
- if(rate<50) msg+="生活リズムが不安定\n";
- else if(rate<80) msg+="スマホ時間改善推奨\n";
- else msg+="良好な習慣";
+ if(rate<50) msg+="生活崩壊レベル";
+ else if(rate<80) msg+="スマホ制限が鍵";
+ else msg+="習慣化成功";
 
  return msg;
 }
 
 function showAnalysis(){alert(analyzeAI());}
 
-// ===== SW（安全更新：確認あり）=====
-if('serviceWorker'in navigator){
- navigator.serviceWorker.register('sw.js').then(reg=>{
-   reg.addEventListener('updatefound',()=>{
-     const newWorker=reg.installing;
-     newWorker.addEventListener('statechange',()=>{
-       if(newWorker.state==='installed'&&navigator.serviceWorker.controller){
-         if(confirm("新しいバージョンがあります。更新しますか？")){
-           newWorker.postMessage('SKIP_WAITING');
-         }
-       }
-     });
-   });
-   navigator.serviceWorker.addEventListener('controllerchange',()=>{
-     window.location.reload();
-   });
- });
-}
-
+// ===== 初期表示 =====
 window.onload=()=>{
  renderLine();
  renderHeatmap();
- renderCalendar();
+ renderStreak();
+
+ // 未完了なら強制誘導UI
+ if(!(status.bath&&status.meds&&status.phone)){
+   document.body.style.background="#fff3cd";
+   document.getElementById("statusMsg").innerText="未完了：今すぐ行動";
+ }
 };
 </script>
 
