@@ -3,211 +3,294 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>夜のルーティーン</title>
-
+<title>夜のルーティン</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body {
-  background:#111; color:#fff; text-align:center; font-family:sans-serif;
-}
-button {
-  width:80%; padding:14px; margin:8px;
-  background:#444; color:#fff; border:none;
-}
-.incomplete {
-  background:#3a0000;
-  animation:pulse 2s infinite;
-}
-@keyframes pulse {
-  0%{opacity:1;}50%{opacity:0.85;}100%{opacity:1;}
-}
-.phone-off {
-  font-size:1.2em; border:2px solid #fff;
-}
-.spacer { height:48px; }
+body { font-family:sans-serif; background:#f0f2f5; text-align:center; padding:20px;}
+.card { background:white; border-radius:15px; padding:20px; margin-bottom:20px;}
+
+button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px; border:none; cursor:pointer; background:#e0e0e0; color:#333;}
+
+.btn-on { background:#4CAF50; color:white;}
+.btn-spacer { visibility:hidden; pointer-events:none; }
+
+.grid { display:grid; grid-template-columns:repeat(7,1fr); gap:5px;}
+.day { padding:6px; font-size:11px; border-radius:5px;}
+.good { background:#4CAF50; color:white;}
+.bad { background:#ccc;}
+
+#streak { font-size:24px; font-weight:bold; color:#ff4444;}
 </style>
 </head>
 
 <body>
 
-<h2>夜のルーティーン</h2>
+<div class="card">
+  <h2 id="statusMsg">夜のルーティン</h2>
 
-<button id="bathBtn" onclick="toggleTask('bath')">風呂</button>
-<button id="medicineBtn" onclick="toggleTask('medicine')">服薬</button>
-<button id="phoneBtn" class="phone-off" onclick="toggleTask('phoneOff')">スマホ終了</button>
+  <div id="streak">🔥 連続成功 0日</div>
 
-<hr>
+  <button id="bathBtn" onclick="complete('bath')">風呂</button>
+  <button id="medsBtn" onclick="complete('meds')">服薬</button>
+  <button id="phoneBtn" onclick="complete('phone')">スマホ終了</button>
 
-<button onclick="resetToday()">今日リセット</button>
-<div class="spacer"></div>
-<button onclick="undoLast()">1つ戻す</button>
+  <button onclick="undoLast()">1つ戻す</button>
 
-<h3 id="streak"></h3>
-<div id="message"></div>
+  <!-- 空白スペース（ボタン1つ分） -->
+  <button class="btn-spacer" disabled>spacer</button>
+
+  <button onclick="showResetConfirm()">今日リセット</button>
+
+  <!-- リセット確認UI -->
+  <div id="resetConfirm" style="display:none; background:#fff3cd; border-radius:10px; padding:10px; margin:6px 0;">
+    <p style="margin:0 0 8px; font-size:14px;">今日の記録を消去しますか？</p>
+    <button onclick="doReset()" style="background:#e53935; color:white; margin:3px 0;">消去する</button>
+    <button onclick="hideResetConfirm()" style="margin:3px 0;">キャンセル</button>
+  </div>
+
+  <button onclick="showAnalysis()">AI分析</button>
+</div>
+
+<div class="card">
+  <h3>就寝時刻（折れ線）</h3>
+  <canvas id="lineChart"></canvas>
+</div>
+
+<div class="card">
+  <h3>ヒートマップ</h3>
+  <div id="heatmap" class="grid"></div>
+</div>
 
 <script>
-// ==========================
-// Storage
-// ==========================
-function getEvents() {
-  return JSON.parse(localStorage.getItem("events") || "[]");
+const DEADLINE = "23:30";
+
+let status = JSON.parse(localStorage.getItem('status')) || {bath:false, meds:false, phone:false};
+let logs   = JSON.parse(localStorage.getItem('logs'))   || [];
+
+// undoStack: 各操作前の {status, logs} スナップショットを積む
+let undoStack = JSON.parse(sessionStorage.getItem('undoStack')) || [];
+
+// ===== 今日の日付（JST） =====
+function getTodayJST() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
 }
-function saveEvents(events) {
-  localStorage.setItem("events", JSON.stringify(events));
-}
-
-// ==========================
-// Event Push
-// ==========================
-function pushEvent(e) {
-  const events = getEvents();
-
-  events.push({
-    ...e,
-    id: crypto.randomUUID(),
-    ts: Date.now()
-  });
-
-  saveEvents(events);
-  renderAll();
+function save() {
+  localStorage.setItem('status', JSON.stringify(status));
+  localStorage.setItem('logs',   JSON.stringify(logs));
+  sessionStorage.setItem('undoStack', JSON.stringify(undoStack));
 }
 
-// ==========================
-// Core Actions
-// ==========================
-function toggleTask(task) {
-  const today = getTodayKey();
-  const state = rebuildState(getEvents());
-  const current = state.logs[today]?.[task] || false;
-
-  pushEvent({
-    type: "TOGGLE_TASK",
-    date: today,
-    payload: { task, value: !current }
-  });
-}
-
-function resetToday() {
-  pushEvent({
-    type: "RESET_DAY",
-    date: getTodayKey()
-  });
-}
-
-function undoLast() {
-  const events = getEvents();
-  if (!events.length) return;
-
-  events.pop(); // ★ 完全Undo（時間巻き戻し）
-
-  saveEvents(events);
-  renderAll();
-}
-
-// ==========================
-// State Rebuild（核心）
-// ==========================
-function rebuildState(events) {
-  const state = { logs:{} };
-
-  events.sort((a,b)=>a.ts-b.ts).forEach(e => {
-    const d = e.date;
-
-    if (e.type === "TOGGLE_TASK") {
-      state.logs[d] = state.logs[d] || {};
-      state.logs[d][e.payload.task] = e.payload.value;
-    }
-
-    if (e.type === "RESET_DAY") {
-      delete state.logs[d];
-    }
-  });
-
-  return state;
-}
-
-// ==========================
-// Render
-// ==========================
-function renderAll() {
-  const state = rebuildState(getEvents());
-  const logs = state.logs;
-  const today = getTodayKey();
-  const todayData = logs[today] || {};
-
-  updateBtn("bathBtn", todayData.bath);
-  updateBtn("medicineBtn", todayData.medicine);
-  updateBtn("phoneBtn", todayData.phoneOff);
-
-  const streak = calculateStreak(logs);
-  document.getElementById("streak").innerText = "ストリーク: " + streak;
-
-  const complete = todayData.bath && todayData.medicine && todayData.phoneOff;
-
-  const msg = document.getElementById("message");
-
-  if (complete) {
-    msg.innerText = "完了：習慣維持成功";
-  } else if (streak >= 3) {
-    msg.innerText = "警告：連続記録が途切れます";
-  } else {
-    msg.innerText = "";
-  }
-
-  // 拡張用（グラフ・ヒートマップ・AI）
-  renderGraph(logs);
-  renderHeatmap(logs);
-  renderAI(logs);
-}
-
-// ==========================
-// UI Helpers
-// ==========================
-function updateBtn(id, done) {
-  const btn = document.getElementById(id);
-
-  if (done) {
-    btn.classList.remove("incomplete");
-    btn.style.background = "#2e7d32";
-  } else {
-    btn.classList.add("incomplete");
-    btn.style.background = "";
-  }
-}
-
-// ==========================
-// Logic
-// ==========================
-function calculateStreak(logs) {
-  const dates = Object.keys(logs).sort().reverse();
+// ===== ストリーク計算 =====
+function calcStreak() {
   let streak = 0;
-
-  for (let d of dates) {
-    const x = logs[d];
-    if (x.bath && x.medicine && x.phoneOff) streak++;
+  for (let i = logs.length - 1; i >= 0; i--) {
+    if (logs[i].success) streak++;
     else break;
   }
   return streak;
 }
 
-// ==========================
-// Placeholder（あとで実装）
-// ==========================
-function renderGraph(logs) {
-  // 折れ線グラフ（就寝時刻）
-}
-function renderHeatmap(logs) {
-  // ヒートマップ
-}
-function renderAI(logs) {
-  // AI分析
+// ===== 表示 =====
+function renderStreak() {
+  const s = calcStreak();
+  const el = document.getElementById("streak");
+  el.innerText = `🔥 連続成功 ${s}日`;
+  el.style.color = s >= 3 ? "#4CAF50" : "#ff4444";
 }
 
-// ==========================
-function getTodayKey() {
-  return new Date().toISOString().split("T")[0];
+function renderButtons() {
+  ['bath','meds','phone'].forEach(type => {
+    const btn = document.getElementById(type + "Btn");
+    btn.className = status[type] ? "btn-on" : "";
+  });
 }
 
-renderAll();
+// ===== 操作 =====
+function complete(type) {
+  if (status[type]) return; // 既にONなら無視
+
+  // スナップショット保存（Undo用）
+  undoStack.push({ status: JSON.stringify(status), logs: JSON.stringify(logs) });
+
+  status[type] = true;
+  save();
+  renderButtons();
+
+  // 3つ全部完了したらログ記録
+  if (status.bath && status.meds && status.phone) {
+    const now  = new Date();
+    const time = now.toTimeString().slice(0, 5);
+    const today = getTodayJST();
+
+    // 今日のログが既にあれば上書き
+    const idx = logs.findIndex(l => l.date === today);
+    const entry = { date: today, finish: time, success: time <= DEADLINE };
+    if (idx >= 0) logs[idx] = entry;
+    else logs.push(entry);
+
+    save();
+    document.getElementById("statusMsg").innerText = "完了";
+    renderStreak();
+    refreshCharts();
+  }
+}
+
+// ===== Undo（1項目だけ戻す） =====
+function undoLast() {
+  if (undoStack.length === 0) return;
+
+  const snap = undoStack.pop();
+  const prevStatus = JSON.parse(snap.status);
+  const prevLogs   = JSON.parse(snap.logs);
+
+  // どのキーが変わったか特定して1つだけ戻す
+  const keys = ['bath','meds','phone'];
+  let undoneKey = null;
+  for (const k of keys) {
+    if (prevStatus[k] !== status[k]) {
+      status[k] = prevStatus[k];
+      undoneKey = k;
+      break; // 1項目だけ
+    }
+  }
+
+  // ログも前の状態に戻す（完了が取り消された場合）
+  logs = prevLogs;
+
+  save();
+  renderButtons();
+  renderStreak();
+  refreshCharts();
+
+  if (undoneKey) {
+    document.getElementById("statusMsg").innerText = `「${labelOf(undoneKey)}」を元に戻しました`;
+  }
+  if (!(status.bath && status.meds && status.phone)) {
+    document.getElementById("statusMsg").innerText =
+      (document.getElementById("statusMsg").innerText === "完了") ? "未完了：今すぐ行動" :
+      document.getElementById("statusMsg").innerText;
+  }
+}
+
+function labelOf(key) {
+  return {bath:"風呂", meds:"服薬", phone:"スマホ終了"}[key];
+}
+
+// ===== 今日リセット =====
+function showResetConfirm() {
+  document.getElementById("resetConfirm").style.display = "block";
+}
+
+function hideResetConfirm() {
+  document.getElementById("resetConfirm").style.display = "none";
+}
+
+function doReset() {
+  hideResetConfirm();
+
+  const today = getTodayJST();
+  logs = logs.filter(l => l.date !== today);
+  status = {bath:false, meds:false, phone:false};
+  undoStack = [];
+
+  save();
+  renderButtons();
+  renderStreak();
+  refreshCharts();
+
+  document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+  document.body.style.background = "#fff3cd";
+}
+
+// ===== グラフ =====
+let lineChartInstance = null;
+
+function renderLine() {
+  const last = logs.slice(-7);
+  const ctx  = document.getElementById('lineChart');
+
+  if (lineChartInstance) {
+    lineChartInstance.destroy();
+    lineChartInstance = null;
+  }
+  if (last.length === 0) return;
+
+  const labels = last.map(l => l.date.slice(5));
+  const data   = last.map(l => {
+    const parts = l.finish.split(":");
+    return parseInt(parts[0]) + parseInt(parts[1]) / 60;
+  });
+
+  lineChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: '就寝時刻',
+        data,
+        borderColor: '#4CAF50',
+        tension: 0.3,
+        fill: false
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          ticks: {
+            callback: v => `${Math.floor(v)}:${String(Math.round((v%1)*60)).padStart(2,'0')}`
+          }
+        }
+      }
+    }
+  });
+}
+
+// ===== ヒートマップ =====
+function renderHeatmap() {
+  const el = document.getElementById('heatmap');
+  el.innerHTML = "";
+  logs.slice(-30).forEach(l => {
+    const d = document.createElement("div");
+    d.className = "day " + (l.success ? "good" : "bad");
+    d.innerText  = l.date.slice(5);
+    el.appendChild(d);
+  });
+}
+
+function refreshCharts() {
+  renderLine();
+  renderHeatmap();
+}
+
+// ===== AI分析 =====
+function analyzeAI() {
+  if (logs.length < 3) return "データ不足（3日以上記録してください）";
+  const rate = ((logs.filter(l => l.success).length / logs.length) * 100).toFixed(0);
+  let msg = `成功率 ${rate}%\n`;
+  if (rate < 50)      msg += "生活崩壊レベル";
+  else if (rate < 80) msg += "スマホ制限が鍵";
+  else                msg += "習慣化成功！";
+  return msg;
+}
+
+function showAnalysis() { alert(analyzeAI()); }
+
+// ===== 初期表示 =====
+window.onload = () => {
+  renderButtons();
+  renderLine();
+  renderHeatmap();
+  renderStreak();
+
+  if (!(status.bath && status.meds && status.phone)) {
+    document.body.style.background = "#fff3cd";
+    document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+  } else {
+    document.getElementById("statusMsg").innerText = "完了";
+  }
+};
 </script>
 
 </body>
