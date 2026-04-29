@@ -3,45 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>夜のルーティーンアプリ</title>
+<title>夜のルーティーン</title>
 
 <style>
 body {
-  font-family: sans-serif;
-  background: #111;
-  color: #fff;
-  text-align: center;
+  background:#111; color:#fff; text-align:center; font-family:sans-serif;
 }
-
 button {
-  background: #444;
-  color: #fff;
-  border: none;
-  padding: 12px;
-  margin: 8px;
-  width: 80%;
-  font-size: 16px;
+  width:80%; padding:14px; margin:8px;
+  background:#444; color:#fff; border:none;
 }
-
 .incomplete {
-  background: #3a0000;
-  animation: pulse 2s infinite;
+  background:#3a0000;
+  animation:pulse 2s infinite;
 }
-
 @keyframes pulse {
-  0% { opacity: 1; }
-  50% { opacity: 0.85; }
-  100% { opacity: 1; }
+  0%{opacity:1;}50%{opacity:0.85;}100%{opacity:1;}
 }
-
 .phone-off {
-  font-size: 1.3em;
-  border: 2px solid #fff;
+  font-size:1.2em; border:2px solid #fff;
 }
-
-.spacer {
-  height: 48px;
-}
+.spacer { height:48px; }
 </style>
 </head>
 
@@ -56,93 +38,105 @@ button {
 <hr>
 
 <button onclick="resetToday()">今日リセット</button>
-
 <div class="spacer"></div>
-
 <button onclick="undoLast()">1つ戻す</button>
 
 <h3 id="streak"></h3>
 <div id="message"></div>
 
 <script>
-let actionStack = [];
-
-function getTodayKey() {
-  return new Date().toISOString().split("T")[0];
+// ==========================
+// Storage
+// ==========================
+function getEvents() {
+  return JSON.parse(localStorage.getItem("events") || "[]");
+}
+function saveEvents(events) {
+  localStorage.setItem("events", JSON.stringify(events));
 }
 
-function getLogs() {
-  return JSON.parse(localStorage.getItem("logs") || "{}");
-}
+// ==========================
+// Event Push
+// ==========================
+function pushEvent(e) {
+  const events = getEvents();
 
-function saveLogs(logs) {
-  localStorage.setItem("logs", JSON.stringify(logs));
-}
-
-function toggleTask(taskName) {
-  const today = getTodayKey();
-  const logs = getLogs();
-
-  const prev = logs[today]?.[taskName] || false;
-
-  actionStack.push({
-    date: today,
-    task: taskName,
-    prevValue: prev
+  events.push({
+    ...e,
+    id: crypto.randomUUID(),
+    ts: Date.now()
   });
 
-  logs[today] = logs[today] || {};
-  logs[today][taskName] = !prev;
-
-  saveLogs(logs);
+  saveEvents(events);
   renderAll();
 }
 
-function undoLast() {
-  const last = actionStack.pop();
-  if (!last) return;
+// ==========================
+// Core Actions
+// ==========================
+function toggleTask(task) {
+  const today = getTodayKey();
+  const state = rebuildState(getEvents());
+  const current = state.logs[today]?.[task] || false;
 
-  const logs = getLogs();
-  logs[last.date] = logs[last.date] || {};
-  logs[last.date][last.task] = last.prevValue;
-
-  saveLogs(logs);
-  renderAll();
+  pushEvent({
+    type: "TOGGLE_TASK",
+    date: today,
+    payload: { task, value: !current }
+  });
 }
 
 function resetToday() {
-  const today = getTodayKey();
-  const logs = getLogs();
+  pushEvent({
+    type: "RESET_DAY",
+    date: getTodayKey()
+  });
+}
 
-  delete logs[today];
+function undoLast() {
+  const events = getEvents();
+  if (!events.length) return;
 
-  saveLogs(logs);
+  events.pop(); // ★ 完全Undo（時間巻き戻し）
+
+  saveEvents(events);
   renderAll();
 }
 
-function calculateStreak(logs) {
-  const dates = Object.keys(logs).sort().reverse();
-  let streak = 0;
+// ==========================
+// State Rebuild（核心）
+// ==========================
+function rebuildState(events) {
+  const state = { logs:{} };
 
-  for (let d of dates) {
-    const day = logs[d];
-    if (day.bath && day.medicine && day.phoneOff) {
-      streak++;
-    } else {
-      break;
+  events.sort((a,b)=>a.ts-b.ts).forEach(e => {
+    const d = e.date;
+
+    if (e.type === "TOGGLE_TASK") {
+      state.logs[d] = state.logs[d] || {};
+      state.logs[d][e.payload.task] = e.payload.value;
     }
-  }
-  return streak;
+
+    if (e.type === "RESET_DAY") {
+      delete state.logs[d];
+    }
+  });
+
+  return state;
 }
 
+// ==========================
+// Render
+// ==========================
 function renderAll() {
-  const logs = getLogs();
+  const state = rebuildState(getEvents());
+  const logs = state.logs;
   const today = getTodayKey();
   const todayData = logs[today] || {};
 
-  updateButton("bathBtn", todayData.bath);
-  updateButton("medicineBtn", todayData.medicine);
-  updateButton("phoneBtn", todayData.phoneOff);
+  updateBtn("bathBtn", todayData.bath);
+  updateBtn("medicineBtn", todayData.medicine);
+  updateBtn("phoneBtn", todayData.phoneOff);
 
   const streak = calculateStreak(logs);
   document.getElementById("streak").innerText = "ストリーク: " + streak;
@@ -158,18 +152,59 @@ function renderAll() {
   } else {
     msg.innerText = "";
   }
+
+  // 拡張用（グラフ・ヒートマップ・AI）
+  renderGraph(logs);
+  renderHeatmap(logs);
+  renderAI(logs);
 }
 
-function updateButton(id, done) {
+// ==========================
+// UI Helpers
+// ==========================
+function updateBtn(id, done) {
   const btn = document.getElementById(id);
 
   if (done) {
     btn.classList.remove("incomplete");
     btn.style.background = "#2e7d32";
   } else {
-    btn.style.background = "";
     btn.classList.add("incomplete");
+    btn.style.background = "";
   }
+}
+
+// ==========================
+// Logic
+// ==========================
+function calculateStreak(logs) {
+  const dates = Object.keys(logs).sort().reverse();
+  let streak = 0;
+
+  for (let d of dates) {
+    const x = logs[d];
+    if (x.bath && x.medicine && x.phoneOff) streak++;
+    else break;
+  }
+  return streak;
+}
+
+// ==========================
+// Placeholder（あとで実装）
+// ==========================
+function renderGraph(logs) {
+  // 折れ線グラフ（就寝時刻）
+}
+function renderHeatmap(logs) {
+  // ヒートマップ
+}
+function renderAI(logs) {
+  // AI分析
+}
+
+// ==========================
+function getTodayKey() {
+  return new Date().toISOString().split("T")[0];
 }
 
 renderAll();
