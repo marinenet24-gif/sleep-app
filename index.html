@@ -6,7 +6,7 @@
 <title>夜のルーティン</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body { font-family:sans-serif; background:#f0f2f5; text-align:center; padding:20px;}
+body { font-family:sans-serif; background:#b2dfdb; text-align:center; padding:20px;}
 .card { background:white; border-radius:15px; padding:20px; margin-bottom:20px;}
 
 button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px; border:none; cursor:pointer; background:#e0e0e0; color:#333;}
@@ -19,16 +19,42 @@ button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:1
 .good { background:#4CAF50; color:white;}
 .bad { background:#ccc;}
 
-#streak { font-size:24px; font-weight:bold; color:#ff4444;}
+#streak { font-size:24px; font-weight:bold; color:#1565c0;}
 </style>
 </head>
 
 <body>
 
-<div class="card">
+<!-- 設定パネル オーバーレイ -->
+<div id="settingsPanel" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center;">
+  <div style="background:white; border-radius:15px; padding:24px; width:88%; max-width:360px; position:relative;">
+    <h3 style="margin:0 0 16px; font-size:17px;">⚙️ 設定 — 達成課題の名前変更</h3>
+    <div style="display:flex; align-items:center; margin-bottom:12px; gap:8px;">
+      <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題１</span>
+      <input id="labelInput_bath" type="text" placeholder="例：風呂" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyLabel('bath')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <div style="display:flex; align-items:center; margin-bottom:12px; gap:8px;">
+      <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題２</span>
+      <input id="labelInput_meds" type="text" placeholder="例：服薬" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyLabel('meds')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <div style="display:flex; align-items:center; margin-bottom:20px; gap:8px;">
+      <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題３</span>
+      <input id="labelInput_phone" type="text" placeholder="例：スマホ終了" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyLabel('phone')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <button onclick="closeSettings()" style="background:#e0e0e0; color:#333; font-size:15px; margin:0;">閉じる</button>
+  </div>
+</div>
+
+<div class="card" style="position:relative;">
+  <!-- 歯車ボタン -->
+  <button onclick="openSettings()" style="position:absolute; top:12px; right:12px; width:36px; height:36px; padding:0; font-size:20px; background:transparent; color:#666; margin:0; line-height:1; box-shadow:none;">⚙️</button>
+
   <h2 id="statusMsg">夜のルーティン</h2>
 
-  <div id="streak">🔥 連続成功 0日</div>
+  <div id="streak">📈 連続成功 0日</div>
 
   <button id="bathBtn" onclick="complete('bath')">風呂</button>
   <button id="medsBtn" onclick="complete('meds')">服薬</button>
@@ -66,9 +92,41 @@ const DEADLINE = "23:30";
 
 let status = JSON.parse(localStorage.getItem('status')) || {bath:false, meds:false, phone:false};
 let logs   = JSON.parse(localStorage.getItem('logs'))   || [];
-
-// undoStack: 各操作前の {status, logs} スナップショットを積む
 let undoStack = JSON.parse(sessionStorage.getItem('undoStack')) || [];
+
+// ===== ラベル管理 =====
+const DEFAULT_LABELS = {bath:"風呂", meds:"服薬", phone:"スマホ終了"};
+let labels = JSON.parse(localStorage.getItem('labels')) || {...DEFAULT_LABELS};
+
+function saveLabels() {
+  localStorage.setItem('labels', JSON.stringify(labels));
+}
+
+function renderLabels() {
+  ['bath','meds','phone'].forEach(k => {
+    document.getElementById(k + "Btn").innerText = labels[k];
+  });
+}
+
+function openSettings() {
+  ['bath','meds','phone'].forEach(k => {
+    document.getElementById('labelInput_' + k).value = labels[k];
+  });
+  const p = document.getElementById('settingsPanel');
+  p.style.display = 'flex';
+}
+
+function closeSettings() {
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+function applyLabel(key) {
+  const val = document.getElementById('labelInput_' + key).value.trim();
+  if (!val) return;
+  labels[key] = val;
+  saveLabels();
+  renderLabels();
+}
 
 // ===== 今日の日付（JST） =====
 function getTodayJST() {
@@ -96,8 +154,8 @@ function calcStreak() {
 function renderStreak() {
   const s = calcStreak();
   const el = document.getElementById("streak");
-  el.innerText = `🔥 連続成功 ${s}日`;
-  el.style.color = s >= 3 ? "#4CAF50" : "#ff4444";
+  el.innerText = `📈 連続成功 ${s}日`;
+  el.style.color = s >= 3 ? "#4CAF50" : "#1565c0";
 }
 
 function renderButtons() {
@@ -175,7 +233,7 @@ function undoLast() {
 }
 
 function labelOf(key) {
-  return {bath:"風呂", meds:"服薬", phone:"スマホ終了"}[key];
+  return labels[key] || DEFAULT_LABELS[key];
 }
 
 // ===== 今日リセット =====
@@ -201,7 +259,7 @@ function doReset() {
   refreshCharts();
 
   document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
-  document.body.style.background = "#fff3cd";
+  document.body.style.background = "#b2dfdb";
 }
 
 // ===== グラフ =====
@@ -279,13 +337,14 @@ function showAnalysis() { alert(analyzeAI()); }
 
 // ===== 初期表示 =====
 window.onload = () => {
+  renderLabels();
   renderButtons();
   renderLine();
   renderHeatmap();
   renderStreak();
 
   if (!(status.bath && status.meds && status.phone)) {
-    document.body.style.background = "#fff3cd";
+    document.body.style.background = "#b2dfdb";
     document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
   } else {
     document.getElementById("statusMsg").innerText = "完了";
