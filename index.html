@@ -26,9 +26,10 @@ button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:1
 <body>
 
 <!-- 設定パネル オーバーレイ -->
-<div id="settingsPanel" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center;">
-  <div style="background:white; border-radius:15px; padding:24px; width:88%; max-width:360px; position:relative;">
-    <h3 style="margin:0 0 16px; font-size:17px;">⚙️ 設定 — 達成課題の名前変更</h3>
+<div id="settingsPanel" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; overflow-y:auto;">
+  <div style="background:white; border-radius:15px; padding:24px; width:88%; max-width:360px; position:relative; margin:20px auto;">
+
+    <h3 style="margin:0 0 16px; font-size:17px;">設定 — 達成課題の名前変更</h3>
     <div style="display:flex; align-items:center; margin-bottom:12px; gap:8px;">
       <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題１</span>
       <input id="labelInput_bath" type="text" placeholder="例：風呂" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
@@ -44,13 +45,39 @@ button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:1
       <input id="labelInput_phone" type="text" placeholder="例：スマホ終了" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
       <button onclick="applyLabel('phone')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
     </div>
+
+    <!-- 区切り線 -->
+    <hr style="border:none; border-top:1px solid #e0e0e0; margin:0 0 16px;">
+
+    <h3 style="margin:0 0 12px; font-size:17px;">過去データの手入力</h3>
+    <p style="font-size:12px; color:#888; margin:0 0 12px; text-align:left;">日付と就寝時刻を入力して追加できます。同じ日付は上書きされます。</p>
+
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px; flex:1;">
+        <label style="font-size:12px; color:#666;">日付</label>
+        <input id="manualDate" type="date" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px; box-sizing:border-box;">
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px; flex:1;">
+        <label style="font-size:12px; color:#666;">就寝時刻</label>
+        <input id="manualTime" type="time" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px; box-sizing:border-box;">
+      </div>
+    </div>
+
+    <div id="manualMsg" style="font-size:13px; color:#e53935; min-height:18px; text-align:left; margin-bottom:8px;"></div>
+
+    <button onclick="addManualLog()" style="background:#1565c0; color:white; font-size:15px; margin:0 0 16px;">追加する</button>
+
+    <!-- 手入力済みログ一覧 -->
+    <div id="manualLogList" style="text-align:left; font-size:13px; color:#555; max-height:120px; overflow-y:auto;"></div>
+
+    <hr style="border:none; border-top:1px solid #e0e0e0; margin:16px 0 16px;">
     <button onclick="closeSettings()" style="background:#e0e0e0; color:#333; font-size:15px; margin:0;">閉じる</button>
   </div>
 </div>
 
 <div class="card" style="position:relative;">
-  <!-- 歯車ボタン -->
-  <button onclick="openSettings()" style="position:absolute; top:12px; right:12px; width:36px; height:36px; padding:0; font-size:20px; background:transparent; color:#666; margin:0; line-height:1; box-shadow:none;">⚙️</button>
+  <!-- 設定ボタン（右上） -->
+  <button onclick="openSettings()" style="position:absolute; top:14px; right:14px; width:auto; padding:4px 10px; font-size:12px; background:#e0e0e0; color:#555; border-radius:6px; margin:0;">設定</button>
 
   <h2 id="statusMsg">夜のルーティン</h2>
 
@@ -112,6 +139,11 @@ function openSettings() {
   ['bath','meds','phone'].forEach(k => {
     document.getElementById('labelInput_' + k).value = labels[k];
   });
+  // 今日の日付をデフォルトにセット
+  document.getElementById('manualDate').value = getTodayJST();
+  document.getElementById('manualTime').value = '';
+  document.getElementById('manualMsg').innerText = '';
+  renderManualLogList();
   const p = document.getElementById('settingsPanel');
   p.style.display = 'flex';
 }
@@ -126,6 +158,62 @@ function applyLabel(key) {
   labels[key] = val;
   saveLabels();
   renderLabels();
+}
+
+// ===== 過去データ手入力 =====
+function addManualLog() {
+  const dateVal = document.getElementById('manualDate').value; // "2025-04-29"
+  const timeVal = document.getElementById('manualTime').value; // "23:15"
+  const msgEl   = document.getElementById('manualMsg');
+
+  if (!dateVal) { msgEl.innerText = '日付を入力してください'; return; }
+  if (!timeVal) { msgEl.innerText = '就寝時刻を入力してください'; return; }
+
+  const entry = { date: dateVal, finish: timeVal, success: timeVal <= DEADLINE };
+  const idx = logs.findIndex(l => l.date === dateVal);
+  if (idx >= 0) {
+    logs[idx] = entry;
+    msgEl.style.color = '#1565c0';
+    msgEl.innerText = `${dateVal} のデータを上書きしました`;
+  } else {
+    logs.push(entry);
+    // 日付順にソート
+    logs.sort((a, b) => a.date.localeCompare(b.date));
+    msgEl.style.color = '#4CAF50';
+    msgEl.innerText = `${dateVal} のデータを追加しました`;
+  }
+
+  save();
+  renderManualLogList();
+  renderStreak();
+  refreshCharts();
+}
+
+function renderManualLogList() {
+  const el = document.getElementById('manualLogList');
+  if (!el) return;
+  if (logs.length === 0) { el.innerHTML = '<span style="color:#aaa;">データなし</span>'; return; }
+
+  const recent = logs.slice().reverse().slice(0, 10); // 直近10件
+  el.innerHTML = '<div style="font-size:12px; color:#999; margin-bottom:4px;">直近の記録（最大10件）</div>' +
+    recent.map(l =>
+      `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f0f0f0;">
+        <span>${l.date}</span>
+        <span>${l.finish}</span>
+        <span style="color:${l.success ? '#4CAF50' : '#e53935'}">${l.success ? '✓ 成功' : '✗ 超過'}</span>
+        <button onclick="deleteManualLog('${l.date}')" style="width:auto; padding:2px 8px; font-size:11px; background:#f5f5f5; color:#e53935; margin:0; border-radius:4px;">削除</button>
+      </div>`
+    ).join('');
+}
+
+function deleteManualLog(date) {
+  logs = logs.filter(l => l.date !== date);
+  save();
+  renderManualLogList();
+  renderStreak();
+  refreshCharts();
+  document.getElementById('manualMsg').style.color = '#888';
+  document.getElementById('manualMsg').innerText = `${date} のデータを削除しました`;
 }
 
 // ===== 今日の日付（JST） =====
@@ -248,8 +336,7 @@ function hideResetConfirm() {
 function doReset() {
   hideResetConfirm();
 
-  const today = getTodayJST();
-  logs = logs.filter(l => l.date !== today);
+  // statusのみリセット（logsは削除しない）
   status = {bath:false, meds:false, phone:false};
   undoStack = [];
 
@@ -335,6 +422,42 @@ function analyzeAI() {
 
 function showAnalysis() { alert(analyzeAI()); }
 
+// ===== 深夜0時 自動リセット（ログは残す・statusのみ） =====
+function scheduleMidnightReset() {
+  const now = new Date();
+  // JST 翌00:00 を UTC で求める
+  // JST 00:00 = UTC 前日 15:00
+  const nowJST = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  // UTC基準で「今日のJST 00:00」= 今日UTC 15:00（前日JST換算）
+  const todayUTC15 = new Date(Date.UTC(
+    nowJST.getUTCFullYear(),
+    nowJST.getUTCMonth(),
+    nowJST.getUTCDate(),
+    15, 0, 0, 0
+  ));
+  // すでに過ぎていれば翌日のUTC 15:00へ
+  if (now.getTime() >= todayUTC15.getTime()) {
+    todayUTC15.setUTCDate(todayUTC15.getUTCDate() + 1);
+  }
+  const msUntil = todayUTC15.getTime() - now.getTime();
+
+  setTimeout(() => {
+    // statusのみリセット（logsは削除しない）
+    status = {bath:false, meds:false, phone:false};
+    undoStack = [];
+    save();
+    renderLabels();
+    renderButtons();
+    renderStreak();
+    refreshCharts();
+    document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+    document.body.style.background = "#b2dfdb";
+
+    // 翌日以降も繰り返す
+    scheduleMidnightReset();
+  }, msUntil);
+}
+
 // ===== 初期表示 =====
 window.onload = () => {
   renderLabels();
@@ -342,6 +465,7 @@ window.onload = () => {
   renderLine();
   renderHeatmap();
   renderStreak();
+  scheduleMidnightReset(); // 深夜0時自動リセット開始
 
   if (!(status.bath && status.meds && status.phone)) {
     document.body.style.background = "#b2dfdb";
