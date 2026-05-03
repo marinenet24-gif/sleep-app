@@ -336,7 +336,10 @@ function hideResetConfirm() {
 function doReset() {
   hideResetConfirm();
 
-  // statusのみリセット（logsは削除しない）
+  // 今日のログを削除（手動リセット時）
+  const today = getTodayJST();
+  logs = logs.filter(l => l.date !== today);
+
   status = {bath:false, meds:false, phone:false};
   undoStack = [];
 
@@ -362,29 +365,59 @@ function renderLine() {
   }
   if (last.length === 0) return;
 
-  const labels = last.map(l => l.date.slice(5));
-  const data   = last.map(l => {
-    const parts = l.finish.split(":");
-    return parseInt(parts[0]) + parseInt(parts[1]) / 60;
+  const chartLabels = last.map(l => l.date.slice(5));
+
+  // 時刻を数値に変換。0:00〜5:59 は 24〜29.99 として扱い折れ線が逆転しないようにする
+  const data = last.map(l => {
+    const [h, m] = l.finish.split(":").map(Number);
+    const val = h + m / 60;
+    // 深夜0時〜6時は翌日扱い（+24）
+    return val < 6 ? val + 24 : val;
   });
 
+  // Y軸: 18(18:00) 〜 30(翌6:00)
   lineChartInstance = new Chart(ctx, {
     type: 'line',
     data: {
-      labels,
+      labels: chartLabels,
       datasets: [{
         label: '就寝時刻',
         data,
         borderColor: '#4CAF50',
+        backgroundColor: 'rgba(76,175,80,0.1)',
         tension: 0.3,
-        fill: false
+        fill: false,
+        pointRadius: 5,
+        pointBackgroundColor: data.map(v => v <= (23.5) ? '#4CAF50' : '#e53935')
       }]
     },
     options: {
       scales: {
         y: {
+          min: 18,
+          max: 30,
+          reverse: false,
           ticks: {
-            callback: v => `${Math.floor(v)}:${String(Math.round((v%1)*60)).padStart(2,'0')}`
+            stepSize: 1,
+            callback: v => {
+              const h = v >= 24 ? v - 24 : v;
+              return `${Math.floor(h)}:00`;
+            }
+          },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        }
+      },
+      plugins: {
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const h = v >= 24 ? v - 24 : v;
+              const hh = Math.floor(h);
+              const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
+              const label = v >= 24 ? `翌${hh}:${mm}` : `${hh}:${mm}`;
+              return `就寝: ${label}`;
+            }
           }
         }
       }
