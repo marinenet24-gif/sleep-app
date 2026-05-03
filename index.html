@@ -455,24 +455,23 @@ function analyzeAI() {
 
 function showAnalysis() { alert(analyzeAI()); }
 
-// ===== 深夜0時 自動リセット（ログは残す・statusのみ） =====
+// ===== 翌朝6時 自動リセット（ログは残す・statusのみ） =====
 function scheduleMidnightReset() {
   const now = new Date();
-  // JST 翌00:00 を UTC で求める
-  // JST 00:00 = UTC 前日 15:00
+  // JST 06:00 = UTC 21:00（前日）
   const nowJST = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  // UTC基準で「今日のJST 00:00」= 今日UTC 15:00（前日JST換算）
-  const todayUTC15 = new Date(Date.UTC(
+  // 今日のJST 06:00 をUTCで表現 = 今日UTC 21:00
+  const targetUTC = new Date(Date.UTC(
     nowJST.getUTCFullYear(),
     nowJST.getUTCMonth(),
     nowJST.getUTCDate(),
-    15, 0, 0, 0
+    21, 0, 0, 0  // UTC 21:00 = JST 06:00
   ));
-  // すでに過ぎていれば翌日のUTC 15:00へ
-  if (now.getTime() >= todayUTC15.getTime()) {
-    todayUTC15.setUTCDate(todayUTC15.getUTCDate() + 1);
+  // すでに過ぎていれば翌日のUTC 21:00へ
+  if (now.getTime() >= targetUTC.getTime()) {
+    targetUTC.setUTCDate(targetUTC.getUTCDate() + 1);
   }
-  const msUntil = todayUTC15.getTime() - now.getTime();
+  const msUntil = targetUTC.getTime() - now.getTime();
 
   setTimeout(() => {
     // statusのみリセット（logsは削除しない）
@@ -498,7 +497,7 @@ window.onload = () => {
   renderLine();
   renderHeatmap();
   renderStreak();
-  scheduleMidnightReset(); // 深夜0時自動リセット開始
+  scheduleMidnightReset(); // 翌朝6時自動リセット開始
 
   if (!(status.bath && status.meds && status.phone)) {
     document.body.style.background = "#b2dfdb";
