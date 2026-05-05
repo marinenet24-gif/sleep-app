@@ -81,7 +81,7 @@ button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:1
 
   <h2 id="statusMsg">夜のルーティン</h2>
 
-  <div id="streak">📈 連続成功 0日</div>
+  <div id="streak">📈 成功 0日</div>
 
   <button id="bathBtn" onclick="complete('bath')">風呂</button>
   <button id="medsBtn" onclick="complete('meds')">服薬</button>
@@ -242,7 +242,7 @@ function calcStreak() {
 function renderStreak() {
   const s = calcStreak();
   const el = document.getElementById("streak");
-  el.innerText = `📈 連続成功 ${s}日`;
+  el.innerText = `📈 成功 ${s}日`;
   el.style.color = s >= 3 ? "#4CAF50" : "#1565c0";
 }
 
@@ -455,49 +455,30 @@ function analyzeAI() {
 
 function showAnalysis() { alert(analyzeAI()); }
 
-// ===== 翌朝6時 自動リセット（ログは残す・statusのみ） =====
-function scheduleMidnightReset() {
-  const now = new Date();
-  // JST 06:00 = UTC 21:00（前日）
-  const nowJST = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  // 今日のJST 06:00 をUTCで表現 = 今日UTC 21:00
-  const targetUTC = new Date(Date.UTC(
-    nowJST.getUTCFullYear(),
-    nowJST.getUTCMonth(),
-    nowJST.getUTCDate(),
-    21, 0, 0, 0  // UTC 21:00 = JST 06:00
-  ));
-  // すでに過ぎていれば翌日のUTC 21:00へ
-  if (now.getTime() >= targetUTC.getTime()) {
-    targetUTC.setUTCDate(targetUTC.getUTCDate() + 1);
-  }
-  const msUntil = targetUTC.getTime() - now.getTime();
+// ===== 起動時リセット判定（前回起動日と今日が異なればstatusリセット） =====
+function checkAndResetOnLaunch() {
+  const lastDate = localStorage.getItem('lastLaunchDate') || '';
+  const today    = getTodayJST();
 
-  setTimeout(() => {
-    // statusのみリセット（logsは削除しない）
+  // 今日の日付を保存
+  localStorage.setItem('lastLaunchDate', today);
+
+  if (lastDate && lastDate !== today) {
+    // 日付が変わっていたらstatusのみリセット（logsは保持）
     status = {bath:false, meds:false, phone:false};
     undoStack = [];
     save();
-    renderLabels();
-    renderButtons();
-    renderStreak();
-    refreshCharts();
-    document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
-    document.body.style.background = "#b2dfdb";
-
-    // 翌日以降も繰り返す
-    scheduleMidnightReset();
-  }, msUntil);
+  }
 }
 
 // ===== 初期表示 =====
 window.onload = () => {
+  checkAndResetOnLaunch(); // 起動時に日付チェック→必要ならリセット
   renderLabels();
   renderButtons();
   renderLine();
   renderHeatmap();
   renderStreak();
-  scheduleMidnightReset(); // 翌朝6時自動リセット開始
 
   if (!(status.bath && status.meds && status.phone)) {
     document.body.style.background = "#b2dfdb";
