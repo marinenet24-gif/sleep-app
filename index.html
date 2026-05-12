@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>夜のルーティン</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family:sans-serif; background:#b2dfdb; text-align:center; padding:20px;}
+.card { background:white; border-radius:15px; padding:20px; margin-bottom:20px;}
+
+button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px; border:none; cursor:pointer; background:#e0e0e0; color:#333;}
+
+.btn-on { background:#4CAF50; color:white;}
+.btn-spacer { visibility:hidden; pointer-events:none; }
+
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  cursor: default;
+}
+.cal-empty  { background: transparent; }
+.cal-none   { background: #f0f0f0; color: #bbb; }
+.cal-good   { background: #4CAF50; color: white; }
+.cal-bad    { background: #e53935; color: white; }
+.cal-today  { outline: 2px solid #1565c0; outline-offset: -2px; }
+
+#streak { font-size:24px; font-weight:bold; color:#1565c0;}
+</style>
+</head>
+
+<body>
+
+<!-- 設定パネル オーバーレイ -->
+<div id="settingsPanel" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.4); z-index:100; align-items:center; justify-content:center; overflow-y:auto;">
+  <div style="background:white; border-radius:15px; padding:24px; width:88%; max-width:360px; position:relative; margin:20px auto;">
+
+    <h3 style="margin:0 0 16px; font-size:17px;">設定 — 達成課題の名前変更</h3>
+    <div style="display:flex; align-items:center; margin-bottom:12px; gap:8px;">
+      <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題１</span>
+      <input id="labelInput_bath" type="text" placeholder="例：風呂" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyLabel('bath')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <div style="display:flex; align-items:center; margin-bottom:12px; gap:8px;">
+      <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題２</span>
+      <input id="labelInput_meds" type="text" placeholder="例：服薬" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyLabel('meds')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <div style="display:flex; align-items:center; margin-bottom:12px; gap:8px;">
+      <span style="width:80px; font-size:14px; flex-shrink:0; text-align:left;">達成課題３</span>
+      <input id="labelInput_phone" type="text" placeholder="例：スマホ終了" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyLabel('phone')" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+
+    <!-- 区切り線 -->
+    <hr style="border:none; border-top:1px solid #e0e0e0; margin:0 0 14px;">
+
+    <h3 style="margin:0 0 12px; font-size:17px;">完了期限時刻</h3>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <span style="font-size:14px; color:#555; flex-shrink:0;">現在：<span id="deadlineDisplay"></span></span>
+      <input id="deadlineInput" type="time" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+      <button onclick="applyDeadline()" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <div id="deadlineError" style="font-size:12px; color:#e53935; min-height:16px; text-align:left; margin-bottom:12px;"></div>
+
+    <!-- 区切り線 -->
+    <hr style="border:none; border-top:1px solid #e0e0e0; margin:0 0 16px;">
+
+    <h3 style="margin:0 0 12px; font-size:17px;">グラフ Y軸の範囲（完了時刻）</h3>
+    <p style="font-size:12px; color:#888; margin:0 0 10px; text-align:left;">グラフ縦軸の開始・終了時刻を設定します。</p>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:16px;">
+      <span style="font-size:13px; color:#555; flex-shrink:0;">開始</span>
+      <select id="chartMinInput" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        <option value="0">0:00</option>
+        <option value="1">1:00</option>
+        <option value="2">2:00</option>
+        <option value="3">3:00</option>
+        <option value="4">4:00</option>
+        <option value="5">5:00</option>
+        <option value="6">6:00</option>
+        <option value="7">7:00</option>
+        <option value="8">8:00</option>
+        <option value="9">9:00</option>
+        <option value="10">10:00</option>
+        <option value="11">11:00</option>
+        <option value="12">12:00</option>
+        <option value="13">13:00</option>
+        <option value="14">14:00</option>
+        <option value="15">15:00</option>
+        <option value="16">16:00</option>
+        <option value="17">17:00</option>
+        <option value="18">18:00</option>
+        <option value="19">19:00</option>
+        <option value="20">20:00</option>
+        <option value="21">21:00</option>
+      </select>
+      <span style="font-size:13px; color:#555; flex-shrink:0;">終了</span>
+      <select id="chartMaxInput" style="flex:1; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px;">
+        <option value="3">3:00</option>
+        <option value="4">4:00</option>
+        <option value="5">5:00</option>
+        <option value="6">6:00</option>
+        <option value="7">7:00</option>
+        <option value="8">8:00</option>
+        <option value="9">9:00</option>
+        <option value="10">10:00</option>
+        <option value="11">11:00</option>
+        <option value="12">12:00</option>
+        <option value="13">13:00</option>
+        <option value="14">14:00</option>
+        <option value="15">15:00</option>
+        <option value="16">16:00</option>
+        <option value="17">17:00</option>
+        <option value="18">18:00</option>
+        <option value="19">19:00</option>
+        <option value="20">20:00</option>
+        <option value="21">21:00</option>
+        <option value="24">翌0:00</option>
+        <option value="25">翌1:00</option>
+        <option value="26">翌2:00</option>
+        <option value="27">翌3:00</option>
+        <option value="28">翌4:00</option>
+        <option value="29">翌5:00</option>
+        <option value="30">翌6:00</option>
+        <option value="31">翌7:00</option>
+        <option value="32">翌8:00</option>
+        <option value="33">翌9:00</option>
+        <option value="34">翌10:00</option>
+        <option value="35">翌11:00</option>
+        <option value="36">翌12:00</option>
+        <option value="37">翌13:00</option>
+        <option value="38">翌14:00</option>
+        <option value="39">翌15:00</option>
+        <option value="40">翌16:00</option>
+        <option value="41">翌17:00</option>
+        <option value="42">翌18:00</option>
+        <option value="43">翌19:00</option>
+        <option value="44">翌20:00</option>
+        <option value="45">翌21:00</option>
+        <option value="46">翌22:00</option>
+        <option value="47">翌23:00</option>
+        <option value="48">翌24:00</option>
+      </select>
+      <button onclick="applyChartRange()" style="width:auto; padding:8px 12px; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0;">変更</button>
+    </div>
+    <div id="chartRangeError" style="font-size:12px; color:#e53935; min-height:16px; text-align:left; margin-bottom:4px;"></div>
+
+    <!-- 区切り線 -->
+    <hr style="border:none; border-top:1px solid #e0e0e0; margin:0 0 16px;">
+
+    <h3 style="margin:0 0 12px; font-size:17px;">過去データの手入力</h3>
+    <p style="font-size:12px; color:#888; margin:0 0 12px; text-align:left;">日付と就寝時刻を入力して追加できます。同じ日付は上書きされます。</p>
+
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:8px;">
+      <div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px; flex:1;">
+        <label style="font-size:12px; color:#666;">日付</label>
+        <input id="manualDate" type="date" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px; box-sizing:border-box;">
+      </div>
+      <div style="display:flex; flex-direction:column; align-items:flex-start; gap:4px; flex:1;">
+        <label style="font-size:12px; color:#666;">就寝時刻</label>
+        <input id="manualTime" type="time" style="width:100%; padding:8px; border:1px solid #ccc; border-radius:8px; font-size:14px; box-sizing:border-box;">
+      </div>
+    </div>
+
+    <div id="manualMsg" style="font-size:13px; color:#e53935; min-height:18px; text-align:left; margin-bottom:8px;"></div>
+
+    <button onclick="addManualLog()" style="background:#1565c0; color:white; font-size:15px; margin:0 0 16px;">追加する</button>
+
+    <!-- 手入力済みログ一覧 -->
+    <div id="manualLogList" style="text-align:left; font-size:13px; color:#555; max-height:120px; overflow-y:auto;"></div>
+
+    <hr style="border:none; border-top:1px solid #e0e0e0; margin:16px 0 16px;">
+    <button onclick="closeSettings()" style="background:#e0e0e0; color:#333; font-size:15px; margin:0;">閉じる</button>
+  </div>
+</div>
+
+<div class="card" style="position:relative;">
+  <!-- 設定ボタン（右上） -->
+  <button onclick="openSettings()" style="position:absolute; top:14px; right:14px; width:auto; padding:4px 10px; font-size:12px; background:#e0e0e0; color:#555; border-radius:6px; margin:0;">設定</button>
+
+  <h2 id="statusMsg">夜のルーティン</h2>
+
+  <div id="streak">📈 成功日 0日</div>
+
+  <button id="bathBtn" onclick="complete('bath')">風呂</button>
+  <button id="medsBtn" onclick="complete('meds')">服薬</button>
+  <button id="phoneBtn" onclick="complete('phone')">スマホ終了</button>
+
+  <button onclick="undoLast()">1つ戻す</button>
+
+  <!-- 空白スペース（ボタン1つ分） -->
+  <button class="btn-spacer" disabled>spacer</button>
+
+  <button onclick="showResetConfirm()">今日リセット</button>
+
+  <!-- リセット確認UI -->
+  <div id="resetConfirm" style="display:none; background:#fff3cd; border-radius:10px; padding:10px; margin:6px 0;">
+    <p style="margin:0 0 8px; font-size:14px;">今日の記録を消去しますか？</p>
+    <button onclick="doReset()" style="background:#e53935; color:white; margin:3px 0;">消去する</button>
+    <button onclick="hideResetConfirm()" style="margin:3px 0;">キャンセル</button>
+  </div>
+
+  <button onclick="showAnalysis()">AI分析</button>
+</div>
+
+<div class="card">
+  <h3>完了時刻</h3>
+  <canvas id="lineChart"></canvas>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px;">カレンダー</h3>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+    <button onclick="calPrev()" style="width:36px; height:36px; padding:0; font-size:18px; margin:0; border-radius:8px;">‹</button>
+    <span id="calTitle" style="font-size:15px; font-weight:bold;"></span>
+    <button onclick="calNext()" style="width:36px; height:36px; padding:0; font-size:18px; margin:0; border-radius:8px;">›</button>
+  </div>
+  <!-- 曜日ヘッダー -->
+  <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:3px;">
+    <div style="font-size:11px; color:#e53935; font-weight:bold;">日</div>
+    <div style="font-size:11px; color:#555;">月</div>
+    <div style="font-size:11px; color:#555;">火</div>
+    <div style="font-size:11px; color:#555;">水</div>
+    <div style="font-size:11px; color:#555;">木</div>
+    <div style="font-size:11px; color:#555;">金</div>
+    <div style="font-size:11px; color:#1565c0; font-weight:bold;">土</div>
+  </div>
+  <div id="calGrid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px;"></div>
+  <!-- 凡例 -->
+  <div style="display:flex; justify-content:center; gap:14px; margin-top:10px; font-size:12px; color:#555;">
+    <span><span style="display:inline-block; width:12px; height:12px; background:#4CAF50; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>成功</span>
+    <span><span style="display:inline-block; width:12px; height:12px; background:#e53935; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>超過</span>
+    <span><span style="display:inline-block; width:12px; height:12px; background:#f0f0f0; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>記録なし</span>
+  </div>
+</div>
+
+<script>
+// 時刻文字列 "HH:MM" を数値（深夜0〜5時は+24）に変換
+function timeToVal(timeStr) {
+  const [h, m] = timeStr.split(":").map(Number);
+  const val = h + m / 60;
+  return val < 6 ? val + 24 : val;
+}
+
+// 就寝時刻がDEADLINE以内かどうか判定
+function isSuccess(finishTime) {
+  return timeToVal(finishTime) <= timeToVal(DEADLINE);
+}
+
+let DEADLINE = localStorage.getItem('deadline') || "23:30";
+let CHART_MIN = parseInt(localStorage.getItem('chartMin') ?? '18');
+let CHART_MAX = parseInt(localStorage.getItem('chartMax') ?? '30');
+
+let status = JSON.parse(localStorage.getItem('status')) || {bath:false, meds:false, phone:false};
+let logs   = JSON.parse(localStorage.getItem('logs'))   || [];
+let undoStack = JSON.parse(sessionStorage.getItem('undoStack')) || [];
+
+// ===== ラベル管理 =====
+const DEFAULT_LABELS = {bath:"風呂", meds:"服薬", phone:"スマホ終了"};
+let labels = JSON.parse(localStorage.getItem('labels')) || {...DEFAULT_LABELS};
+
+function saveLabels() {
+  localStorage.setItem('labels', JSON.stringify(labels));
+}
+
+function renderLabels() {
+  ['bath','meds','phone'].forEach(k => {
+    document.getElementById(k + "Btn").innerText = labels[k];
+  });
+}
+
+function applyDeadline() {
+  const val = document.getElementById('deadlineInput').value;
+  const errEl = document.getElementById('deadlineError');
+  if (!val) return;
+  // DEADLINEがグラフ終了時刻より遅い場合エラー
+  const dlVal = timeToVal(val);
+  if (dlVal > CHART_MAX) {
+    errEl.innerText = '⚠ 完了期限時刻がグラフ終了時刻（' + chartValToLabel(CHART_MAX) + '）を超えています。グラフ範囲を先に広げてください。';
+    return;
+  }
+  errEl.innerText = '';
+  DEADLINE = val;
+  localStorage.setItem('deadline', DEADLINE);
+  document.getElementById('deadlineDisplay').innerText = DEADLINE;
+  // 既存ログのsuccess判定を再計算
+  logs = logs.map(l => ({ ...l, success: isSuccess(l.finish) }));
+  save();
+  renderStreak();
+  refreshCharts();
+}
+
+function openSettings() {
+  ['bath','meds','phone'].forEach(k => {
+    document.getElementById('labelInput_' + k).value = labels[k];
+  });
+  document.getElementById('deadlineDisplay').innerText = DEADLINE;
+  document.getElementById('deadlineInput').value = DEADLINE;
+  document.getElementById('chartMinInput').value = String(CHART_MIN);
+  document.getElementById('chartMaxInput').value = String(CHART_MAX);
+  document.getElementById('deadlineError').innerText = '';
+  document.getElementById('chartRangeError').innerText = '';
+  document.getElementById('manualDate').value = getTodayJST();
+  document.getElementById('manualTime').value = '';
+  document.getElementById('manualMsg').innerText = '';
+  renderManualLogList();
+  const p = document.getElementById('settingsPanel');
+  p.style.display = 'flex';
+}
+
+function chartValToLabel(v) {
+  if (v >= 24) return '翌' + (v - 24) + ':00';
+  return v + ':00';
+}
+
+function applyChartRange() {
+  const minVal = parseInt(document.getElementById('chartMinInput').value);
+  const maxVal = parseInt(document.getElementById('chartMaxInput').value);
+  const errEl  = document.getElementById('chartRangeError');
+  // ① 終了が開始以下
+  if (maxVal <= minVal) {
+    errEl.innerText = '⚠ 終了時刻は開始時刻より後にしてください。';
+    return;
+  }
+  // ② 完了期限時刻が終了時刻より遅い
+  const dlVal = timeToVal(DEADLINE);
+  if (dlVal > maxVal) {
+    errEl.innerText = '⚠ 完了期限時刻（' + DEADLINE + '）がグラフ終了時刻（' + chartValToLabel(maxVal) + '）を超えています。先に完了期限時刻を早めてください。';
+    return;
+  }
+  errEl.innerText = '';
+  CHART_MIN = minVal;
+  CHART_MAX = maxVal;
+  localStorage.setItem('chartMin', CHART_MIN);
+  localStorage.setItem('chartMax', CHART_MAX);
+  renderLine();
+}
+
+function closeSettings() {
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+function applyLabel(key) {
+  const val = document.getElementById('labelInput_' + key).value.trim();
+  if (!val) return;
+  labels[key] = val;
+  saveLabels();
+  renderLabels();
+}
+
+// ===== 過去データ手入力 =====
+function addManualLog() {
+  const dateVal = document.getElementById('manualDate').value; // "2025-04-29"
+  const timeVal = document.getElementById('manualTime').value; // "23:15"
+  const msgEl   = document.getElementById('manualMsg');
+
+  if (!dateVal) { msgEl.innerText = '日付を入力してください'; return; }
+  if (!timeVal) { msgEl.innerText = '就寝時刻を入力してください'; return; }
+
+  const entry = { date: dateVal, finish: timeVal, success: isSuccess(timeVal) };
+  const idx = logs.findIndex(l => l.date === dateVal);
+  if (idx >= 0) {
+    logs[idx] = entry;
+    msgEl.style.color = '#1565c0';
+    msgEl.innerText = `${dateVal} のデータを上書きしました`;
+  } else {
+    logs.push(entry);
+    // 日付順にソート
+    logs.sort((a, b) => a.date.localeCompare(b.date));
+    msgEl.style.color = '#4CAF50';
+    msgEl.innerText = `${dateVal} のデータを追加しました`;
+  }
+
+  save();
+  renderManualLogList();
+  renderStreak();
+  refreshCharts();
+}
+
+function renderManualLogList() {
+  const el = document.getElementById('manualLogList');
+  if (!el) return;
+  if (logs.length === 0) { el.innerHTML = '<span style="color:#aaa;">データなし</span>'; return; }
+
+  const recent = logs.slice().reverse().slice(0, 10); // 直近10件
+  el.innerHTML = '<div style="font-size:12px; color:#999; margin-bottom:4px;">直近の記録（最大10件）</div>' +
+    recent.map(l =>
+      `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f0f0f0;">
+        <span>${l.date}</span>
+        <span>${l.finish}</span>
+        <span style="color:${l.success ? '#4CAF50' : '#e53935'}">${l.success ? '✓ 成功' : '✗ 超過'}</span>
+        <button onclick="deleteManualLog('${l.date}')" style="width:auto; padding:2px 8px; font-size:11px; background:#f5f5f5; color:#e53935; margin:0; border-radius:4px;">削除</button>
+      </div>`
+    ).join('');
+}
+
+function deleteManualLog(date) {
+  logs = logs.filter(l => l.date !== date);
+  save();
+  renderManualLogList();
+  renderStreak();
+  refreshCharts();
+  document.getElementById('manualMsg').style.color = '#888';
+  document.getElementById('manualMsg').innerText = `${date} のデータを削除しました`;
+}
+
+// ===== 今日の日付（JST） =====
+function getTodayJST() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
+function save() {
+  localStorage.setItem('status', JSON.stringify(status));
+  localStorage.setItem('logs',   JSON.stringify(logs));
+  sessionStorage.setItem('undoStack', JSON.stringify(undoStack));
+}
+
+// ===== 成功日数計算（成功した日のみカウント・失敗日は含まない） =====
+function calcStreak() {
+  return logs.filter(l => l.success).length;
+}
+
+// ===== 表示 =====
+function renderStreak() {
+  const s = calcStreak();
+  const el = document.getElementById("streak");
+  el.innerText = `📈 成功日 ${s}日`;
+  el.style.color = s >= 3 ? "#4CAF50" : "#1565c0";
+}
+
+function renderButtons() {
+  ['bath','meds','phone'].forEach(type => {
+    const btn = document.getElementById(type + "Btn");
+    btn.className = status[type] ? "btn-on" : "";
+  });
+}
+
+// ===== 操作 =====
+function complete(type) {
+  if (status[type]) return; // 既にONなら無視
+
+  // スナップショット保存（Undo用）
+  undoStack.push({ status: JSON.stringify(status), logs: JSON.stringify(logs) });
+
+  status[type] = true;
+  save();
+  renderButtons();
+
+  // 3つ全部完了したらログ記録
+  if (status.bath && status.meds && status.phone) {
+    const now  = new Date();
+    const time = now.toTimeString().slice(0, 5);
+    const today = getTodayJST();
+
+    // 今日のログが既にあれば上書き
+    const idx = logs.findIndex(l => l.date === today);
+    const entry = { date: today, finish: time, success: isSuccess(time) };
+    if (idx >= 0) logs[idx] = entry;
+    else logs.push(entry);
+
+    save();
+    document.getElementById("statusMsg").innerText = "完了";
+    renderStreak();
+    refreshCharts();
+  }
+}
+
+// ===== Undo（1項目だけ戻す） =====
+function undoLast() {
+  if (undoStack.length === 0) return;
+
+  const snap = undoStack.pop();
+  const prevStatus = JSON.parse(snap.status);
+  const prevLogs   = JSON.parse(snap.logs);
+
+  // どのキーが変わったか特定して1つだけ戻す
+  const keys = ['bath','meds','phone'];
+  let undoneKey = null;
+  for (const k of keys) {
+    if (prevStatus[k] !== status[k]) {
+      status[k] = prevStatus[k];
+      undoneKey = k;
+      break; // 1項目だけ
+    }
+  }
+
+  // ログも前の状態に戻す（完了が取り消された場合）
+  logs = prevLogs;
+
+  save();
+  renderButtons();
+  renderStreak();
+  refreshCharts();
+
+  if (undoneKey) {
+    document.getElementById("statusMsg").innerText = `「${labelOf(undoneKey)}」を元に戻しました`;
+  }
+  if (!(status.bath && status.meds && status.phone)) {
+    document.getElementById("statusMsg").innerText =
+      (document.getElementById("statusMsg").innerText === "完了") ? "未完了：今すぐ行動" :
+      document.getElementById("statusMsg").innerText;
+  }
+}
+
+function labelOf(key) {
+  return labels[key] || DEFAULT_LABELS[key];
+}
+
+// ===== 今日リセット =====
+function showResetConfirm() {
+  document.getElementById("resetConfirm").style.display = "block";
+}
+
+function hideResetConfirm() {
+  document.getElementById("resetConfirm").style.display = "none";
+}
+
+function doReset() {
+  hideResetConfirm();
+
+  // 今日のログを削除（手動リセット時）
+  const today = getTodayJST();
+  logs = logs.filter(l => l.date !== today);
+
+  status = {bath:false, meds:false, phone:false};
+  undoStack = [];
+
+  save();
+  renderButtons();
+  renderStreak();
+  refreshCharts();
+
+  document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+  document.body.style.background = "#b2dfdb";
+}
+
+// ===== グラフ =====
+let lineChartInstance = null;
+
+function renderLine() {
+  const last = logs.slice(-7);
+  const ctx  = document.getElementById('lineChart');
+
+  if (lineChartInstance) {
+    lineChartInstance.destroy();
+    lineChartInstance = null;
+  }
+  if (last.length === 0) return;
+
+  const chartLabels = last.map(l => l.date.slice(5));
+
+  // 時刻を数値に変換（timeToVal共通関数を使用）
+  const data = last.map(l => timeToVal(l.finish));
+
+  // Y軸: CHART_MIN 〜 CHART_MAX
+  lineChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: '就寝時刻',
+        data,
+        borderColor: '#4CAF50',
+        backgroundColor: 'rgba(76,175,80,0.1)',
+        tension: 0.3,
+        fill: false,
+        pointRadius: 5,
+        pointBackgroundColor: last.map(l => isSuccess(l.finish) ? '#4CAF50' : '#e53935')
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          min: CHART_MIN,
+          max: CHART_MAX,
+          reverse: false,
+          ticks: {
+            stepSize: 1,
+            callback: v => {
+              const h = v >= 24 ? v - 24 : v;
+              return `${Math.floor(h)}:00`;
+            }
+          },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: {
+            usePointStyle: true,
+            pointStyle: 'circle'
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const h = v >= 24 ? v - 24 : v;
+              const hh = Math.floor(h);
+              const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
+              const label = v >= 24 ? `翌${hh}:${mm}` : `${hh}:${mm}`;
+              return `完了時刻: ${label}`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ===== カレンダー =====
+let calYear  = 0;
+let calMonth = 0; // 0-11
+
+function initCalendar() {
+  const now = new Date();
+  calYear  = now.getFullYear();
+  calMonth = now.getMonth();
+}
+
+function calPrev() {
+  calMonth--;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderHeatmap();
+}
+
+function calNext() {
+  calMonth++;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderHeatmap();
+}
+
+function renderHeatmap() {
+  if (calYear === 0) initCalendar();
+
+  const today = getTodayJST();
+  const grid  = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  // タイトル更新
+  document.getElementById('calTitle').innerText =
+    `${calYear}年${calMonth + 1}月`;
+
+  // ログをdateキーでマップ化
+  const logMap = {};
+  logs.forEach(l => { logMap[l.date] = l; });
+
+  // 月初の曜日（0=日〜6=土）
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  // 月末日
+  const lastDate = new Date(calYear, calMonth + 1, 0).getDate();
+
+  // 空白セル
+  for (let i = 0; i < firstDay; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-cell cal-empty';
+    grid.appendChild(el);
+  }
+
+  // 日付セル
+  for (let d = 1; d <= lastDate; d++) {
+    const mm   = String(calMonth + 1).padStart(2, '0');
+    const dd   = String(d).padStart(2, '0');
+    const dateStr = `${calYear}-${mm}-${dd}`;
+    const log  = logMap[dateStr];
+
+    let cls = 'cal-none';
+    if (log) cls = log.success ? 'cal-good' : 'cal-bad';
+
+    const el = document.createElement('div');
+    el.className = `cal-cell ${cls}${dateStr === today ? ' cal-today' : ''}`;
+    el.innerText = d;
+
+    // ツールチップ（記録あり日のみ）
+    if (log) el.title = `${dateStr}  就寝 ${log.finish}`;
+
+    grid.appendChild(el);
+  }
+}
+
+function refreshCharts() {
+  renderLine();
+  renderHeatmap();
+}
+
+// ===== AI分析 =====
+function analyzeAI() {
+  if (logs.length < 3) return "データ不足（3日以上記録してください）";
+  const rate = ((logs.filter(l => l.success).length / logs.length) * 100).toFixed(0);
+  let msg = `成功率 ${rate}%\n`;
+  if (rate < 50)      msg += "生活崩壊レベル";
+  else if (rate < 80) msg += "スマホ制限が鍵";
+  else                msg += "習慣化成功！";
+  return msg;
+}
+
+function showAnalysis() { alert(analyzeAI()); }
+
+// ===== 起動時リセット（再起動・更新時に常にstatusをリセット） =====
+function checkAndResetOnLaunch() {
+  status = {bath:false, meds:false, phone:false};
+  undoStack = [];
+  save();
+}
+
+// ===== 初期表示 =====
+window.onload = () => {
+  checkAndResetOnLaunch(); // 起動時に日付チェック→必要ならリセット
+  renderLabels();
+  renderButtons();
+  renderLine();
+  renderHeatmap();
+  renderStreak();
+
+  if (!(status.bath && status.meds && status.phone)) {
+    document.body.style.background = "#b2dfdb";
+    document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+  } else {
+    document.getElementById("statusMsg").innerText = "完了";
+  }
+};
+</script>
+
+</body>
+</html>
