@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>夜のルーティン</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family:sans-serif; background:#b2dfdb; text-align:center; padding:20px;}
+.card { background:white; border-radius:15px; padding:20px; margin-bottom:20px;}
+
+button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px; border:none; cursor:pointer; background:#e0e0e0; color:#333;}
+
+.btn-on { background:#4CAF50; color:white;}
+.btn-spacer { visibility:hidden; pointer-events:none; }
+
+.cal-cell {
+  aspect-ratio: 1;
+  border-radius: 6px;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  cursor: default;
+}
+.cal-empty  { background: transparent; }
+.cal-none   { background: #f0f0f0; color: #bbb; }
+.cal-good   { background: #4CAF50; color: white; }
+.cal-bad    { background: #e53935; color: white; }
+.cal-today  { outline: 2px solid #1565c0; outline-offset: -2px; }
+
+#streak { font-size:24px; font-weight:bold; color:#1565c0;}
+</style>
+</head>
+
+<body>
+
+<!-- 設定パネル オーバーレイ -->
+<div id="settingsPanel" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.45); z-index:100; align-items:flex-start; justify-content:center; overflow-y:auto;">
+  <div style="background:white; border-radius:20px; padding:26px 22px; width:88%; max-width:380px; position:relative; margin:30px auto 40px;">
+
+    <!-- ✕ 閉じるボタン（右上） -->
+    <button onclick="closeSettings()" style="position:absolute; top:12px; right:12px; width:36px; height:36px; padding:0; font-size:20px; background:#f0f0f0; color:#555; border-radius:50%; margin:0; line-height:1;">✕</button>
+
+    <h3 style="margin:0 0 16px; font-size:18px; text-align:left;">達成課題の名前変更</h3>
+
+    <!-- 達成課題リスト（動的） -->
+    <div id="labelRows"></div>
+
+    <!-- 区切り線 -->
+    <hr style="border:none; border-top:1px solid #e8e8e8; margin:16px 0;">
+
+    <h3 style="margin:0 0 14px; font-size:18px; text-align:left;">完了期限時刻</h3>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+      <span style="font-size:15px; color:#666; flex-shrink:0;">現在：<b id="deadlineDisplay"></b></span>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:22px;">
+      <input id="deadlineInput" type="time" style="flex:1; padding:10px; border:1px solid #ccc; border-radius:8px; font-size:16px;">
+      <button onclick="applyDeadline()" style="width:auto; padding:10px 16px; font-size:15px; background:#4CAF50; color:white; border-radius:8px; margin:0; flex-shrink:0;">変更</button>
+    </div>
+
+    <!-- 区切り線 -->
+    <hr style="border:none; border-top:1px solid #e8e8e8; margin:0 0 16px;">
+
+    <h3 style="margin:0 0 10px; font-size:18px; text-align:left;">過去データの手入力</h3>
+    <p style="font-size:14px; color:#aaa; margin:0 0 12px; text-align:left;">同じ日付は上書きされます。</p>
+    <div style="display:flex; gap:8px; margin-bottom:8px;">
+      <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+        <label style="font-size:13px; color:#888;">日付</label>
+        <input id="manualDate" type="date" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box;">
+      </div>
+      <div style="display:flex; flex-direction:column; gap:4px; flex:1;">
+        <label style="font-size:13px; color:#888;">完了時刻</label>
+        <input id="manualTime" type="time" style="width:100%; padding:9px; border:1px solid #ccc; border-radius:8px; font-size:15px; box-sizing:border-box;">
+      </div>
+    </div>
+    <div id="manualMsg" style="font-size:14px; min-height:18px; text-align:left; margin-bottom:8px;"></div>
+    <button onclick="addManualLog()" style="background:#1565c0; color:white; font-size:16px; margin:0 0 14px; padding:12px;">追加する</button>
+    <div id="manualLogList" style="text-align:left; font-size:14px; color:#555; max-height:140px; overflow-y:auto;"></div>
+
+  </div>
+</div>
+
+<div class="card" style="position:relative;">
+  <!-- 設定ボタン（右上）歯車＋テキスト -->
+  <button onclick="openSettings()" style="position:absolute; top:6px; right:12px; display:flex; align-items:center; gap:6px; width:auto; padding:4px 10px; background:#f0f0f0; color:#444; border-radius:20px; margin:0; cursor:pointer; border:none;">
+    <img src="data:image/png;base64,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" style="width:26px; height:26px; display:block;">
+    <span style="font-size:14px; font-weight:bold;">設定</span>
+  </button>
+
+  <h2 id="statusMsg">夜のルーティン</h2>
+
+  <div id="streak">📈 成功日 0日</div>
+
+  <!-- タスクボタン（動的生成） -->
+  <div id="taskButtons"></div>
+
+  <button onclick="undoLast()">1つ戻す</button>
+
+  <!-- 空白スペース（ボタン1つ分） -->
+  <button class="btn-spacer" disabled>spacer</button>
+
+  <button onclick="showResetConfirm()">今日リセット</button>
+
+  <!-- リセット確認UI -->
+  <div id="resetConfirm" style="display:none; background:#fff3cd; border-radius:10px; padding:10px; margin:6px 0;">
+    <p style="margin:0 0 8px; font-size:14px;">今日の記録を消去しますか？</p>
+    <button onclick="doReset()" style="background:#e53935; color:white; margin:3px 0;">消去する</button>
+    <button onclick="hideResetConfirm()" style="margin:3px 0;">キャンセル</button>
+  </div>
+
+  <button onclick="showAnalysis()">AI分析</button>
+</div>
+
+<div class="card">
+  <h3>完了時刻</h3>
+  <canvas id="lineChart"></canvas>
+</div>
+
+<div class="card">
+  <h3 style="margin-bottom:10px;">カレンダー</h3>
+  <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
+    <button onclick="calPrev()" style="width:36px; height:36px; padding:0; font-size:18px; margin:0; border-radius:8px;">‹</button>
+    <span id="calTitle" style="font-size:15px; font-weight:bold;"></span>
+    <button onclick="calNext()" style="width:36px; height:36px; padding:0; font-size:18px; margin:0; border-radius:8px;">›</button>
+  </div>
+  <!-- 曜日ヘッダー -->
+  <div style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px; margin-bottom:3px;">
+    <div style="font-size:11px; color:#e53935; font-weight:bold;">日</div>
+    <div style="font-size:11px; color:#555;">月</div>
+    <div style="font-size:11px; color:#555;">火</div>
+    <div style="font-size:11px; color:#555;">水</div>
+    <div style="font-size:11px; color:#555;">木</div>
+    <div style="font-size:11px; color:#555;">金</div>
+    <div style="font-size:11px; color:#1565c0; font-weight:bold;">土</div>
+  </div>
+  <div id="calGrid" style="display:grid; grid-template-columns:repeat(7,1fr); gap:3px;"></div>
+  <!-- 凡例 -->
+  <div style="display:flex; justify-content:center; gap:14px; margin-top:10px; font-size:12px; color:#555;">
+    <span><span style="display:inline-block; width:12px; height:12px; background:#4CAF50; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>成功</span>
+    <span><span style="display:inline-block; width:12px; height:12px; background:#e53935; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>超過</span>
+    <span><span style="display:inline-block; width:12px; height:12px; background:#f0f0f0; border-radius:3px; vertical-align:middle; margin-right:4px;"></span>記録なし</span>
+  </div>
+</div>
+
+<script>
+let DEADLINE = localStorage.getItem('deadline') || "23:30";
+
+let status = JSON.parse(localStorage.getItem('status')) || {bath:false, meds:false, phone:false};
+let logs   = JSON.parse(localStorage.getItem('logs'))   || [];
+let undoStack = JSON.parse(sessionStorage.getItem('undoStack')) || [];
+
+// ===== タスク管理（動的配列） =====
+// tasks: [{key, label}] — keyはbath/meds/phoneまたは動的ID
+const DEFAULT_TASKS = [
+  {key:'bath',  label:'風呂'},
+  {key:'meds',  label:'服薬'},
+  {key:'phone', label:'スマホ終了'}
+];
+let tasks = JSON.parse(localStorage.getItem('tasks')) || DEFAULT_TASKS.map(t=>({...t}));
+
+// 後方互換：旧labelsデータをtasksに移行
+(function migrateLabels(){
+  const old = localStorage.getItem('labels');
+  if (old && !localStorage.getItem('tasks')) {
+    const o = JSON.parse(old);
+    tasks = DEFAULT_TASKS.map(t => ({key:t.key, label: o[t.key] || t.label}));
+    localStorage.setItem('tasks', JSON.stringify(tasks));
+  }
+})();
+
+// statusも動的キーに対応
+if (!status || typeof status !== 'object') status = {};
+tasks.forEach(t => { if (!(t.key in status)) status[t.key] = false; });
+
+function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); }
+
+function renderLabels() {
+  // メイン画面のボタンを再生成
+  const container = document.getElementById('taskButtons');
+  container.innerHTML = '';
+  tasks.forEach(t => {
+    const btn = document.createElement('button');
+    btn.id = t.key + 'Btn';
+    btn.innerText = t.label;
+    btn.className = status[t.key] ? 'btn-on' : '';
+    btn.onclick = () => complete(t.key);
+    container.appendChild(btn);
+  });
+}
+
+function renderButtons() {
+  tasks.forEach(t => {
+    const btn = document.getElementById(t.key + 'Btn');
+    if (btn) btn.className = status[t.key] ? 'btn-on' : '';
+  });
+}
+
+// ===== 設定パネル内のラベル行を描画 =====
+function renderLabelRows() {
+  const rows = document.getElementById('labelRows');
+  rows.innerHTML = '';
+
+  tasks.forEach((t, i) => {
+    const isFixed = i < 3;
+    const row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:14px;';
+
+    // textarea
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:17px; font-weight:bold; color:#333; margin-bottom:6px; text-align:left;';
+    label.innerText = `達成課題${i+1}`;
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex; gap:6px; align-items:center;';
+
+    const ta = document.createElement('textarea');
+    ta.id = 'labelInput_' + t.key;
+    ta.value = t.label;
+    ta.placeholder = '課題名を入力';
+    ta.style.cssText = 'width:66%; flex:none; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:15px; resize:none; height:46px; line-height:1.4; box-sizing:border-box;';
+
+    const btnChange = document.createElement('button');
+    btnChange.innerText = '変更';
+    btnChange.style.cssText = 'width:48px; height:46px; padding:0; font-size:13px; background:#4CAF50; color:white; border-radius:8px; margin:0; flex-shrink:0;';
+    btnChange.addEventListener('click', () => applyLabel(t.key));
+
+    wrap.appendChild(ta);
+    wrap.appendChild(btnChange);
+
+    if (!isFixed) {
+      const btnDel = document.createElement('button');
+      btnDel.innerText = '－';
+      btnDel.style.cssText = 'width:38px; height:46px; padding:0; font-size:20px; background:#fce4ec; color:#e53935; border-radius:8px; margin:0; flex-shrink:0;';
+      btnDel.addEventListener('click', () => deleteTask(t.key));
+      wrap.appendChild(btnDel);
+    }
+
+    row.appendChild(label);
+    row.appendChild(wrap);
+    rows.appendChild(row);
+  });
+
+  // ＋追加行
+  const addRow = document.createElement('div');
+  addRow.style.cssText = 'margin-bottom:4px;';
+
+  const addLabel = document.createElement('div');
+  addLabel.style.cssText = 'font-size:17px; font-weight:bold; color:#333; margin-bottom:6px; text-align:left;';
+  addLabel.innerText = `達成課題${tasks.length + 1}を追加`;
+
+  const addWrap = document.createElement('div');
+  addWrap.style.cssText = 'display:flex; gap:6px; align-items:center;';
+
+  const addTa = document.createElement('textarea');
+  addTa.id = 'newTaskInput';
+  addTa.placeholder = '新しい課題名';
+  addTa.style.cssText = 'width:66%; flex:none; padding:8px; border:1px solid #ddd; border-radius:8px; font-size:15px; resize:none; height:46px; line-height:1.4; box-sizing:border-box;';
+
+  const btnAdd = document.createElement('button');
+  btnAdd.innerText = '＋';
+  btnAdd.style.cssText = 'width:38px; height:46px; padding:0; font-size:22px; background:#e8f5e9; color:#4CAF50; border-radius:8px; margin:0; flex-shrink:0;';
+  btnAdd.addEventListener('click', addTask);
+
+  addWrap.appendChild(addTa);
+  addWrap.appendChild(btnAdd);
+  addRow.appendChild(addLabel);
+  addRow.appendChild(addWrap);
+  rows.appendChild(addRow);
+}
+
+function applyLabel(key) {
+  const el = document.getElementById('labelInput_' + key);
+  if (!el) return;
+  const val = el.value.trim();
+  if (!val) return;
+  const t = tasks.find(t => t.key === key);
+  if (t) t.label = val;
+  saveTasks();
+  renderLabels();
+}
+
+function addTask() {
+  const inp = document.getElementById('newTaskInput');
+  const val = inp.value.trim();
+  if (!val) return;
+  const key = 'task_' + Date.now();
+  tasks.push({key, label: val});
+  status[key] = false;
+  saveTasks();
+  save();
+  renderLabels();
+  renderLabelRows();
+  // クリアは renderLabelRows で再描画されるので不要
+}
+
+function deleteTask(key) {
+  // 最新のtasksをlocalStorageから読み直す
+  tasks = JSON.parse(localStorage.getItem('tasks')) || tasks;
+  const idx = tasks.findIndex(t => t.key === key);
+  if (idx === -1 || idx < 3) return;
+  tasks.splice(idx, 1);
+  delete status[key];
+  saveTasks();
+  save();
+  renderLabels();
+  renderLabelRows();
+}
+
+function applyDeadline() {
+  const val = document.getElementById('deadlineInput').value;
+  if (!val) return;
+  DEADLINE = val;
+  localStorage.setItem('deadline', DEADLINE);
+  document.getElementById('deadlineDisplay').innerText = DEADLINE;
+  // 既存ログのsuccess判定を再計算
+  logs = logs.map(l => ({ ...l, success: l.finish <= DEADLINE }));
+  save();
+  renderStreak();
+  refreshCharts();
+}
+
+function openSettings() {
+  renderLabelRows();
+  document.getElementById('deadlineDisplay').innerText = DEADLINE;
+  document.getElementById('deadlineInput').value = DEADLINE;
+  document.getElementById('manualDate').value = getTodayJST();
+  document.getElementById('manualTime').value = '';
+  document.getElementById('manualMsg').innerText = '';
+  renderManualLogList();
+  const p = document.getElementById('settingsPanel');
+  p.style.display = 'flex';
+}
+
+function closeSettings() {
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+function applyLabel(key) {
+  const val = document.getElementById('labelInput_' + key).value.trim();
+  if (!val) return;
+  labels[key] = val;
+  saveLabels();
+  renderLabels();
+}
+
+// ===== 過去データ手入力 =====
+function addManualLog() {
+  const dateVal = document.getElementById('manualDate').value; // "2025-04-29"
+  const timeVal = document.getElementById('manualTime').value; // "23:15"
+  const msgEl   = document.getElementById('manualMsg');
+
+  if (!dateVal) { msgEl.innerText = '日付を入力してください'; return; }
+  if (!timeVal) { msgEl.innerText = '就寝時刻を入力してください'; return; }
+
+  const entry = { date: dateVal, finish: timeVal, success: timeVal <= DEADLINE };
+  const idx = logs.findIndex(l => l.date === dateVal);
+  if (idx >= 0) {
+    logs[idx] = entry;
+    msgEl.style.color = '#1565c0';
+    msgEl.innerText = `${dateVal} のデータを上書きしました`;
+  } else {
+    logs.push(entry);
+    // 日付順にソート
+    logs.sort((a, b) => a.date.localeCompare(b.date));
+    msgEl.style.color = '#4CAF50';
+    msgEl.innerText = `${dateVal} のデータを追加しました`;
+  }
+
+  save();
+  renderManualLogList();
+  renderStreak();
+  refreshCharts();
+}
+
+function renderManualLogList() {
+  const el = document.getElementById('manualLogList');
+  if (!el) return;
+  if (logs.length === 0) { el.innerHTML = '<span style="color:#aaa;">データなし</span>'; return; }
+
+  const recent = logs.slice().reverse().slice(0, 10); // 直近10件
+  el.innerHTML = '<div style="font-size:12px; color:#999; margin-bottom:4px;">直近の記録（最大10件）</div>' +
+    recent.map(l =>
+      `<div style="display:flex; justify-content:space-between; padding:4px 0; border-bottom:1px solid #f0f0f0;">
+        <span>${l.date}</span>
+        <span>${l.finish}</span>
+        <span style="color:${l.success ? '#4CAF50' : '#e53935'}">${l.success ? '✓ 成功' : '✗ 超過'}</span>
+        <button onclick="deleteManualLog('${l.date}')" style="width:auto; padding:2px 8px; font-size:11px; background:#f5f5f5; color:#e53935; margin:0; border-radius:4px;">削除</button>
+      </div>`
+    ).join('');
+}
+
+function deleteManualLog(date) {
+  logs = logs.filter(l => l.date !== date);
+  save();
+  renderManualLogList();
+  renderStreak();
+  refreshCharts();
+  document.getElementById('manualMsg').style.color = '#888';
+  document.getElementById('manualMsg').innerText = `${date} のデータを削除しました`;
+}
+
+// ===== 今日の日付（JST） =====
+function getTodayJST() {
+  const now = new Date();
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  return jst.toISOString().slice(0, 10);
+}
+function save() {
+  localStorage.setItem('status', JSON.stringify(status));
+  localStorage.setItem('logs',   JSON.stringify(logs));
+  sessionStorage.setItem('undoStack', JSON.stringify(undoStack));
+}
+
+// ===== 成功日数計算（成功した日のみカウント・失敗日は含まない） =====
+function calcStreak() {
+  return logs.filter(l => l.success).length;
+}
+
+// ===== 表示 =====
+function renderStreak() {
+  const s = calcStreak();
+  const el = document.getElementById("streak");
+  el.innerText = `📈 成功日 ${s}日`;
+  el.style.color = s >= 3 ? "#4CAF50" : "#1565c0";
+}
+
+function renderButtons() {
+  ['bath','meds','phone'].forEach(type => {
+    const btn = document.getElementById(type + "Btn");
+    btn.className = status[type] ? "btn-on" : "";
+  });
+}
+
+// ===== 操作 =====
+function complete(type) {
+  if (status[type]) return; // 既にONなら無視
+
+  // スナップショット保存（Undo用）
+  undoStack.push({ status: JSON.stringify(status), logs: JSON.stringify(logs) });
+
+  status[type] = true;
+  save();
+  renderButtons();
+
+  // 全タスク完了したらログ記録
+  if (tasks.every(t => status[t.key])) {
+    const now  = new Date();
+    const time = now.toTimeString().slice(0, 5);
+    const today = getTodayJST();
+
+    // 今日のログが既にあれば上書き
+    const idx = logs.findIndex(l => l.date === today);
+    const entry = { date: today, finish: time, success: time <= DEADLINE };
+    if (idx >= 0) logs[idx] = entry;
+    else logs.push(entry);
+
+    save();
+    document.getElementById("statusMsg").innerText = "完了";
+    renderStreak();
+    refreshCharts();
+  }
+}
+
+// ===== Undo（1項目だけ戻す） =====
+function undoLast() {
+  if (undoStack.length === 0) return;
+
+  const snap = undoStack.pop();
+  const prevStatus = JSON.parse(snap.status);
+  const prevLogs   = JSON.parse(snap.logs);
+
+  // どのキーが変わったか特定して1つだけ戻す
+  const keys = tasks.map(t => t.key);
+  let undoneKey = null;
+  for (const k of keys) {
+    if (prevStatus[k] !== status[k]) {
+      status[k] = prevStatus[k];
+      undoneKey = k;
+      break; // 1項目だけ
+    }
+  }
+
+  // ログも前の状態に戻す（完了が取り消された場合）
+  logs = prevLogs;
+
+  save();
+  renderButtons();
+  renderStreak();
+  refreshCharts();
+
+  if (undoneKey) {
+    document.getElementById("statusMsg").innerText = `「${labelOf(undoneKey)}」を元に戻しました`;
+  }
+  if (!(status.bath && status.meds && status.phone)) {
+    document.getElementById("statusMsg").innerText =
+      (document.getElementById("statusMsg").innerText === "完了") ? "未完了：今すぐ行動" :
+      document.getElementById("statusMsg").innerText;
+  }
+}
+
+function labelOf(key) {
+  return labels[key] || DEFAULT_LABELS[key];
+}
+
+// ===== 今日リセット =====
+function showResetConfirm() {
+  document.getElementById("resetConfirm").style.display = "block";
+}
+
+function hideResetConfirm() {
+  document.getElementById("resetConfirm").style.display = "none";
+}
+
+function doReset() {
+  hideResetConfirm();
+
+  // 今日のログを削除（手動リセット時）
+  const today = getTodayJST();
+  logs = logs.filter(l => l.date !== today);
+
+  const resetStatus = {};
+  tasks.forEach(t => { resetStatus[t.key] = false; });
+  status = resetStatus;
+  undoStack = [];
+
+  save();
+  renderButtons();
+  renderStreak();
+  refreshCharts();
+
+  document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+  document.body.style.background = "#b2dfdb";
+}
+
+// ===== グラフ =====
+let lineChartInstance = null;
+
+function renderLine() {
+  const last = logs.slice(-7);
+  const ctx  = document.getElementById('lineChart');
+
+  if (lineChartInstance) {
+    lineChartInstance.destroy();
+    lineChartInstance = null;
+  }
+  if (last.length === 0) return;
+
+  const chartLabels = last.map(l => l.date.slice(5));
+
+  // 時刻を数値に変換。0:00〜5:59 は 24〜29.99 として扱い折れ線が逆転しないようにする
+  const data = last.map(l => {
+    const [h, m] = l.finish.split(":").map(Number);
+    const val = h + m / 60;
+    // 深夜0時〜6時は翌日扱い（+24）
+    return val < 6 ? val + 24 : val;
+  });
+
+  // Y軸: 18(18:00) 〜 30(翌6:00)
+  lineChartInstance = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: chartLabels,
+      datasets: [{
+        label: '就寝時刻',
+        data,
+        borderColor: '#4CAF50',
+        backgroundColor: 'rgba(76,175,80,0.1)',
+        tension: 0.3,
+        fill: false,
+        pointRadius: 5,
+        pointBackgroundColor: data.map(v => {
+          const dlH = parseInt(DEADLINE.split(':')[0]);
+          const dlM = parseInt(DEADLINE.split(':')[1]);
+          const dlVal = dlH + dlM / 60;
+          return v <= dlVal ? '#4CAF50' : '#e53935';
+        })
+      }]
+    },
+    options: {
+      scales: {
+        y: {
+          min: 18,
+          max: 30,
+          reverse: false,
+          ticks: {
+            stepSize: 1,
+            callback: v => {
+              const h = v >= 24 ? v - 24 : v;
+              return `${Math.floor(h)}:00`;
+            }
+          },
+          grid: { color: 'rgba(0,0,0,0.05)' }
+        }
+      },
+      plugins: {
+        legend: {
+          labels: {
+            usePointStyle: true,
+            pointStyle: 'circle'
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const v = ctx.parsed.y;
+              const h = v >= 24 ? v - 24 : v;
+              const hh = Math.floor(h);
+              const mm = String(Math.round((h % 1) * 60)).padStart(2, '0');
+              const label = v >= 24 ? `翌${hh}:${mm}` : `${hh}:${mm}`;
+              return `完了時刻: ${label}`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+// ===== カレンダー =====
+let calYear  = 0;
+let calMonth = 0; // 0-11
+
+function initCalendar() {
+  const now = new Date();
+  calYear  = now.getFullYear();
+  calMonth = now.getMonth();
+}
+
+function calPrev() {
+  calMonth--;
+  if (calMonth < 0) { calMonth = 11; calYear--; }
+  renderHeatmap();
+}
+
+function calNext() {
+  calMonth++;
+  if (calMonth > 11) { calMonth = 0; calYear++; }
+  renderHeatmap();
+}
+
+function renderHeatmap() {
+  if (calYear === 0) initCalendar();
+
+  const today = getTodayJST();
+  const grid  = document.getElementById('calGrid');
+  grid.innerHTML = '';
+
+  // タイトル更新
+  document.getElementById('calTitle').innerText =
+    `${calYear}年${calMonth + 1}月`;
+
+  // ログをdateキーでマップ化
+  const logMap = {};
+  logs.forEach(l => { logMap[l.date] = l; });
+
+  // 月初の曜日（0=日〜6=土）
+  const firstDay = new Date(calYear, calMonth, 1).getDay();
+  // 月末日
+  const lastDate = new Date(calYear, calMonth + 1, 0).getDate();
+
+  // 空白セル
+  for (let i = 0; i < firstDay; i++) {
+    const el = document.createElement('div');
+    el.className = 'cal-cell cal-empty';
+    grid.appendChild(el);
+  }
+
+  // 日付セル
+  for (let d = 1; d <= lastDate; d++) {
+    const mm   = String(calMonth + 1).padStart(2, '0');
+    const dd   = String(d).padStart(2, '0');
+    const dateStr = `${calYear}-${mm}-${dd}`;
+    const log  = logMap[dateStr];
+
+    let cls = 'cal-none';
+    if (log) cls = log.success ? 'cal-good' : 'cal-bad';
+
+    const el = document.createElement('div');
+    el.className = `cal-cell ${cls}${dateStr === today ? ' cal-today' : ''}`;
+    el.innerText = d;
+
+    // ツールチップ（記録あり日のみ）
+    if (log) el.title = `${dateStr}  就寝 ${log.finish}`;
+
+    grid.appendChild(el);
+  }
+}
+
+function refreshCharts() {
+  renderLine();
+  renderHeatmap();
+}
+
+// ===== AI分析 =====
+function analyzeAI() {
+  if (logs.length < 3) return "データ不足（3日以上記録してください）";
+  const rate = ((logs.filter(l => l.success).length / logs.length) * 100).toFixed(0);
+  let msg = `成功率 ${rate}%\n`;
+  if (rate < 50)      msg += "生活崩壊レベル";
+  else if (rate < 80) msg += "スマホ制限が鍵";
+  else                msg += "習慣化成功！";
+  return msg;
+}
+
+function showAnalysis() { alert(analyzeAI()); }
+
+// ===== 起動時リセット（再起動・更新時に常にstatusをリセット） =====
+function checkAndResetOnLaunch() {
+  const resetStatus = {};
+  tasks.forEach(t => { resetStatus[t.key] = false; });
+  status = resetStatus;
+  undoStack = [];
+  save();
+}
+
+// ===== 初期表示 =====
+window.onload = () => {
+  checkAndResetOnLaunch();
+  renderLabels();
+  renderLine();
+  renderHeatmap();
+  renderStreak();
+
+  const allDone = tasks.every(t => status[t.key]);
+  if (!allDone) {
+    document.body.style.background = "#b2dfdb";
+    document.getElementById("statusMsg").innerText = "未完了：今すぐ行動";
+  } else {
+    document.getElementById("statusMsg").innerText = "完了";
+  }
+};
+</script>
+
+</body>
+</html>
