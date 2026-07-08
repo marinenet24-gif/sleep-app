@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<title>ルーティン</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="theme-color" content="#1565c0">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family:sans-serif; background:linear-gradient(165deg,#b2dfdb 0%,#e0f2f1 55%,#e8f5e9 100%); background-attachment:fixed; text-align:center; padding:16px; margin:0; min-height:100vh; box-sizing:border-box; }
+.card { background:white; border-radius:18px; padding:20px; margin-bottom:16px; box-shadow:0 4px 16px rgba(38,99,92,0.10); }
+
+/* ===== ボタン共通 ===== */
+button { width:100%; padding:12px; margin:6px 0; border-radius:10px; font-size:16px; border:none; cursor:pointer; background:#e0e0e0; color:#333; }
+
+/* 達成課題ボタン */
+.btn-task { position:relative; overflow:hidden; text-align:left; padding-left:14px; }
+.btn-on   { background:#4CAF50 !important; color:white !important; }
+.btn-task.task-optional { opacity:0.55; }
+
+/* コンディション選択 */
+.cond-row { display:flex; gap:6px; margin:4px 0 8px; }
+.cond-btn { flex:1; padding:8px 2px; margin:0; border-radius:12px; font-size:12.5px; background:#f5f5f5; color:#777; border:2px solid transparent; }
+.cond-btn.active-normal { background:#e8f5e9; color:#2e7d32; border-color:#4CAF50; font-weight:bold; }
+.cond-btn.active-tired  { background:#fff8e1; color:#f57c00; border-color:#ffb74d; font-weight:bold; }
+.cond-btn.active-rest   { background:#e1f5fe; color:#0277bd; border-color:#4fc3f7; font-weight:bold; }
+
+/* 週間ミニ統計チップ */
+.stat-chips { display:flex; gap:8px; justify-content:center; margin:0 0 14px; flex-wrap:wrap; }
+.stat-chip { background:#f5f7f7; border-radius:12px; padding:8px 12px; font-size:12px; color:#555; text-align:center; min-width:84px; }
+.stat-chip b { display:block; font-size:17px; margin-top:2px; }
+
+/* 操作ボタン */
+.btn-ctrl { width:auto; display:inline-block; padding:10px 20px; margin:3px 4px; border-radius:20px; font-size:14px; border:none; cursor:pointer; background:#eee; color:#555; }
+.btn-ctrl-row { display:flex; justify-content:center; flex-wrap:wrap; margin:8px 0 4px; }
+.btn-danger { background:#ffebee; color:#c62828; }
+.btn-info   { background:#e3f2fd; color:#1565c0; }
+.btn-spacer { visibility:hidden; pointer-events:none; height:6px; display:block; margin:0; padding:0; }
+
+/* ===== タブ ===== */
+.tab-bar { display:flex; border-bottom:2px solid #e0e0e0; margin-bottom:14px; }
+.tab-btn { flex:1; padding:10px 0; font-size:14px; background:none; border:none; border-bottom:3px solid transparent; color:#999; margin:0; border-radius:0; cursor:pointer; width:auto; }
+.tab-btn.active { color:#1565c0; border-bottom-color:#1565c0; font-weight:bold; }
+.tab-pane { display:none; }
+.tab-pane.active { display:block; }
+
+/* ===== ドラッグ並べ替え ===== */
+.drag-row { transition: opacity 0.15s; }
+.drag-row.dragging { opacity: 0.4; }
+.drag-row.drag-over { border-top: 2px solid #4CAF50; }
+.drag-handle { cursor: grab; font-size: 20px; color: #bbb; padding: 0 6px; user-select: none; flex-shrink:0; }
+.cal-cell { aspect-ratio:1; border-radius:6px; font-size:11px; display:flex; align-items:center; justify-content:center; font-weight:bold; cursor:pointer; }
+.cal-empty  { background:transparent; cursor:default; }
+.cal-none   { background:#f0f0f0; color:#bbb; }
+.cal-good   { background:#4CAF50; color:white; }
+.cal-bad    { background:#ffb74d; color:white; }
+.cal-rest   { background:#b3e5fc; color:#0277bd; }
+.cal-today  { outline:2px solid #1565c0; outline-offset:-2px; }
+
+/* ===== カレンダー詳細ポップアップ ===== */
+#calPopup {
+  display:none; position:fixed; top:0; left:0; width:100%; height:100%;
+  background:rgba(0,0,0,0.45); z-index:150; align-items:center; justify-content:center;
+}
+#calPopupInner {
+  background:white; border-radius:16px; padding:22px 20px; width:82%; max-width:320px;
+  position:relative;
+}
+
+/* ===== 全完了エフェクト ===== */
+#completeOverlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; z-index:200; pointer-events:none; }
+#thumbsUp { position:fixed; top:50%; left:50%; transform:translate(-50%,-50%) scale(0); font-size:100px; z-index:201; pointer-events:none; transition:transform 0.3s cubic-bezier(0.175,0.885,0.32,1.275); }
+.star { position:fixed; pointer-events:none; animation:starFly 1.2s ease-out forwards; }
+@keyframes starFly {
+  0%   { opacity:1; transform:translate(0,0) scale(1) rotate(0deg); }
+  100% { opacity:0; transform:translate(var(--dx),var(--dy)) scale(0.3) rotate(var(--rot)); }
+}
+
+/* ===== 設定パネル ===== */
+#settingsPanel { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.45); z-index:100; align-items:flex-start; justify-content:center; overflow-y:auto; }
+#settingsInner { background:white; border-radius:20px; padding:26px 22px; width:88%; max-width:380px; position:relative; margin:30px auto 40px; }
+</style>
+</head>
+<body>
+
+<!-- ===== 全完了エフェクト ===== -->
+<div id="completeOverlay"></div>
+<div id="thumbsUp">👍</div>
+
+<!-- ===== カレンダー詳細ポップアップ ===== -->
+<div id="calPopup" style="display:none;">
+  <div id="calPopupInner">
+    <button onclick="closeCalPopup()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;padding:0;font-size:18px;background:#f0f0f0;border-radius:50%;margin:0;">✕</button>
+    <h3 id="calPopupDate" style="margin:0 0 14px;font-size:17px;text-align:left;"></h3>
+    <div id="calPopupContent"></div>
+  </div>
+</div>
+
+<!-- ===== ごほうびコレクション ポップアップ ===== -->
+<div id="rewardPopup" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:150;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;padding:22px 20px;width:86%;max-width:340px;position:relative;max-height:80vh;overflow-y:auto;">
+    <button onclick="closeRewardPopup()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;padding:0;font-size:18px;background:#f0f0f0;border-radius:50%;margin:0;">✕</button>
+    <h3 style="margin:0 0 6px;font-size:17px;text-align:left;">🎁 ごほうびコレクション</h3>
+    <p style="font-size:12px;color:#999;margin:0 0 12px;text-align:left;">必須課題を全部完了した日に、1日1回ランダムで仲間が増えます。</p>
+    <div id="rewardPopupContent"></div>
+  </div>
+</div>
+
+<!-- ===== AI分析ポップアップ ===== -->
+<div id="aiPopup" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.45);z-index:150;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;padding:22px 20px;width:86%;max-width:340px;position:relative;max-height:80vh;overflow-y:auto;">
+    <button onclick="closeAiPopup()" style="position:absolute;top:10px;right:10px;width:32px;height:32px;padding:0;font-size:18px;background:#f0f0f0;border-radius:50%;margin:0;">✕</button>
+    <h3 style="margin:0 0 14px;font-size:17px;text-align:left;">🤖 AI分析</h3>
+    <div id="aiPopupContent" style="text-align:left;font-size:14px;line-height:1.7;color:#333;"></div>
+  </div>
+</div>
+
+<!-- ===== 設定パネル ===== -->
+<div id="settingsPanel">
+  <div id="settingsInner">
+    <button onclick="closeSettings()" style="position:absolute;top:12px;right:12px;width:36px;height:36px;padding:0;font-size:20px;background:#f0f0f0;color:#555;border-radius:50%;margin:0;line-height:1;">✕</button>
+
+    <h3 style="margin:0 0 16px;font-size:18px;text-align:left;">課題の名前変更・並べ替え</h3>
+    <div id="labelRows"></div>
+
+    <hr style="border:none;border-top:1px solid #e8e8e8;margin:16px 0;">
+    <h3 style="margin:0 0 6px;font-size:18px;text-align:left;">今日の時間帯設定</h3>
+    <p style="font-size:12px;color:#bbb;margin:0 0 12px;text-align:left;">※ 時刻を選ぶと自動で保存されます</p>
+
+    <div style="margin-bottom:12px;text-align:left;">
+      <div style="font-size:13px;color:#888;margin-bottom:4px;">今日の開始時刻 <span style="font-size:11px;color:#bbb;">（グラフ・判定の基準）</span></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:14px;color:#555;">現在：<b id="dayStartDisplay"></b></span>
+        <input id="dayStartInput" type="time" onchange="applyDayStart()" style="flex:1;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+      </div>
+    </div>
+
+    <div style="margin-bottom:12px;text-align:left;">
+      <div style="font-size:13px;color:#888;margin-bottom:4px;">リセット時刻 <span style="font-size:11px;color:#bbb;">（翌日・チェック自動リセット）</span></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:14px;color:#555;">現在：<b id="dayResetDisplay"></b></span>
+        <input id="dayResetInput" type="time" onchange="applyDayReset()" style="flex:1;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+      </div>
+    </div>
+
+    <div style="margin-bottom:22px;text-align:left;">
+      <div style="font-size:13px;color:#888;margin-bottom:4px;">完了期限時刻 <span style="font-size:11px;color:#bbb;">（この時刻までで成功）</span></div>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <span style="font-size:14px;color:#555;">現在：<b id="deadlineDisplay"></b></span>
+        <input id="deadlineInput" type="time" onchange="applyDeadline()" style="flex:1;padding:9px;border:1px solid #ccc;border-radius:8px;font-size:15px;">
+      </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #e8e8e8;margin:0 0 16px;">
+    <h3 style="margin:0 0 10px;font-size:18px;text-align:left;">過去データの手入力</h3>
+    <p style="font-size:13px;color:#aaa;margin:0 0 10px;text-align:left;">日付・完了時刻を入力。同じ日付は上書き。</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px;">
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+        <label style="font-size:12px;color:#888;">日付</label>
+        <input id="manualDate" type="date" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex:1;">
+        <label style="font-size:12px;color:#888;">完了時刻</label>
+        <input id="manualTime" type="time" style="width:100%;padding:8px;border:1px solid #ccc;border-radius:8px;font-size:14px;box-sizing:border-box;">
+      </div>
+    </div>
+    <div id="manualMsg" style="font-size:13px;min-height:16px;text-align:left;margin-bottom:8px;"></div>
+    <button onclick="addManualLog()" style="background:#1565c0;color:white;font-size:15px;margin:0 0 12px;padding:11px;">追加する</button>
+    <div id="manualLogList" style="text-align:left;font-size:13px;color:#555;max-height:130px;overflow-y:auto;"></div>
+
+    <hr style="border:none;border-top:1px solid #e8e8e8;margin:16px 0;">
+    <h3 style="margin:0 0 10px;font-size:18px;text-align:left;">バックアップ／復元</h3>
+    <button onclick="exportBackup()" style="background:#1565c0;color:white;font-size:15px;margin:0 0 10px;padding:11px;">📥 バックアップをダウンロード</button>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;">
+      <label for="importFile" style="display:block;flex:1;padding:11px;font-size:15px;background:#e8f5e9;color:#2e7d32;border-radius:10px;text-align:center;cursor:pointer;margin:0;">📤 ファイルから復元</label>
+      <input id="importFile" type="file" accept=".json" onchange="importBackup(event)" style="display:none;">
+    </div>
+    <div id="backupMsg" style="font-size:13px;min-height:16px;text-align:left;margin-bottom:4px;"></div>
+    <p style="font-size:12px;color:#bbb;margin:6px 0 0;text-align:left;">※ 記録操作や設定変更のたびに自動保存されます（端末内に直近5件を保持）。</p>
+    <div id="autoBackupInfo" style="font-size:12px;color:#888;margin-top:4px;text-align:left;"></div>
+
+    <hr style="border:none;border-top:1px solid #e8e8e8;margin:16px 0;">
+    <h3 style="margin:0 0 8px;font-size:18px;text-align:left;">⛩ お賽銭（開発の応援）</h3>
+    <p style="font-size:13px;color:#888;margin:0 0 10px;text-align:left;line-height:1.6;">このアプリは全機能ずっと無料です。目標を達成できて「ありがとう」と思えたときにだけ、お気持ちを納めていただけたら励みになります。</p>
+    <div id="saisenArea"></div>
+  </div>
+</div>
+
+<!-- ===== 設定を閉じる際の未保存確認 ===== -->
+<div id="settingsCloseConfirm" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:120;align-items:center;justify-content:center;">
+  <div style="background:white;border-radius:16px;padding:22px 20px;width:80%;max-width:300px;text-align:center;">
+    <p style="font-size:15px;color:#333;margin:0 0 18px;">入力中の新しい課題を追加しますか？</p>
+    <button onclick="saveAndCloseSettings()" style="background:#4CAF50;color:white;margin:0 0 8px;">追加して閉じる</button>
+    <button onclick="discardAndCloseSettings()" style="background:#ffebee;color:#c62828;margin:0 0 8px;">追加せず閉じる</button>
+    <button onclick="hideSettingsCloseConfirm()" style="background:#f0f0f0;color:#555;margin:0;">キャンセル</button>
+  </div>
+</div>
+
+<!-- ===== メインカード ===== -->
+<div class="card" style="position:relative;padding-top:16px;">
+  <!-- アプリタイトル -->
+  <div style="text-align:left;margin-bottom:10px;padding-right:100px;">
+    <div style="font-size:26px;font-weight:bold;color:#1565c0;line-height:1.2;">達成</div>
+    <div style="font-size:16px;font-weight:bold;color:#4CAF50;letter-spacing:1px;">Self-achievement</div>
+  </div>
+
+  <button onclick="openSettings()" style="position:absolute;top:14px;right:12px;display:flex;align-items:center;gap:6px;width:auto;padding:6px 12px;background:#f0f0f0;color:#444;border-radius:20px;margin:0;cursor:pointer;border:none;">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="-24 -24 48 48" width="26" height="26" style="display:block;flex-shrink:0;"><path d="M -4.09,-12.34 L -3.15,-17.72 L 3.15,-17.72 L 4.09,-12.34 L 5.83,-11.62 L 10.30,-14.76 L 14.76,-10.30 L 11.62,-5.83 L 12.34,-4.09 L 17.72,-3.15 L 17.72,3.15 L 12.34,4.09 L 11.62,5.83 L 14.76,10.30 L 10.30,14.76 L 5.83,11.62 L 4.09,12.34 L 3.15,17.72 L -3.15,17.72 L -4.09,12.34 L -5.83,11.62 L -10.30,14.76 L -14.76,10.30 L -11.62,5.83 L -12.34,4.09 L -17.72,3.15 L -17.72,-3.15 L -12.34,-4.09 L -11.62,-5.83 L -14.76,-10.30 L -10.30,-14.76 L -5.83,-11.62 Z" fill="#888" stroke="#666" stroke-width="0.8" stroke-linejoin="round"/><circle cx="0" cy="0" r="6" fill="white" stroke="#666" stroke-width="0.8"/></svg>
+    <span style="font-size:14px;font-weight:bold;">設定</span>
+  </button>
+
+  <div id="statusMsg" style="font-size:14px;color:#555;margin-bottom:6px;">余力を残して行動し課題の達成感に満たされましょう😊</div>
+  <div id="streak">📈 成功日 0日</div>
+
+  <!-- 今日のコンディション（適応型リカバリー） -->
+  <div style="font-size:12px;color:#999;margin:10px 0 2px;text-align:left;">今日のコンディション（睡眠・体調に合わせて選択）</div>
+  <div class="cond-row">
+    <button class="cond-btn" id="condNormal" onclick="setCondition('normal')">😊 ふつう</button>
+    <button class="cond-btn" id="condTired"  onclick="setCondition('tired')">😪 おつかれ</button>
+    <button class="cond-btn" id="condRest"   onclick="setCondition('rest')">🌙 休息日</button>
+  </div>
+  <div id="condHint" style="font-size:12px;color:#999;margin-bottom:6px;text-align:left;min-height:14px;"></div>
+
+  <!-- 全体進捗バー -->
+  <div style="margin:10px 0 6px;background:#f0f0f0;border-radius:8px;height:10px;overflow:hidden;">
+    <div id="progressBar" style="height:100%;background:#4CAF50;border-radius:8px;width:0%;transition:width 0.4s;"></div>
+  </div>
+  <div id="progressLabel" style="font-size:12px;color:#888;margin-bottom:8px;"></div>
+
+  <div id="taskButtons"></div>
+
+  <div class="btn-spacer"></div>
+  <div class="btn-ctrl-row">
+    <button class="btn-ctrl btn-danger" onclick="showResetConfirm()">今日分リセット</button>
+    <button class="btn-ctrl btn-info" onclick="showAnalysis()">AI分析</button>
+    <button class="btn-ctrl" style="background:#fff8e1;color:#f57c00;" onclick="showRewardPopup()">🎁 コレクション</button>
+  </div>
+
+  <div id="resetConfirm" style="display:none;background:#fff3cd;border-radius:10px;padding:10px;margin:6px 0;">
+    <p style="margin:0 0 8px;font-size:14px;">今日の記録を消去しますか？</p>
+    <button class="btn-ctrl btn-danger" onclick="doReset()" style="width:auto;margin:3px;">消去する</button>
+    <button class="btn-ctrl" onclick="hideResetConfirm()" style="width:auto;margin:3px;">キャンセル</button>
+  </div>
+
+</div>
+
+<!-- ===== 分析カード（タブ切り替え） ===== -->
+<div class="card">
+  <div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('summary')">サマリー</button>
+    <button class="tab-btn" onclick="switchTab('detail')">詳細</button>
+  </div>
+
+  <!-- サマリータブ -->
+  <div id="tab-summary" class="tab-pane active">
+    <div class="stat-chips" id="weeklyChips"></div>
+    <h3 style="margin:0 0 10px;">完了時刻</h3>
+    <canvas id="lineChart"></canvas>
+
+    <h3 style="margin:18px 0 10px;">カレンダー</h3>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <button onclick="calPrev()" style="width:36px;height:36px;padding:0;font-size:18px;margin:0;border-radius:8px;">‹</button>
+      <span id="calTitle" style="font-size:15px;font-weight:bold;"></span>
+      <button onclick="calNext()" style="width:36px;height:36px;padding:0;font-size:18px;margin:0;border-radius:8px;">›</button>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:3px;">
+      <div style="font-size:11px;color:#e53935;font-weight:bold;">日</div>
+      <div style="font-size:11px;color:#555;">月</div>
+      <div style="font-size:11px;color:#555;">火</div>
+      <div style="font-size:11px;color:#555;">水</div>
+      <div style="font-size:11px;color:#555;">木</div>
+      <div style="font-size:11px;color:#555;">金</div>
+      <div style="font-size:11px;color:#1565c0;font-weight:bold;">土</div>
+    </div>
+    <div id="calGrid" style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px;"></div>
+    <div style="display:flex;justify-content:center;gap:14px;margin-top:10px;font-size:12px;color:#555;">
+      <span><span style="display:inline-block;width:12px;height:12px;background:#4CAF50;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>成功</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#ffb74d;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>時間外</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#b3e5fc;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>休息</span>
+      <span><span style="display:inline-block;width:12px;height:12px;background:#f0f0f0;border-radius:3px;vertical-align:middle;margin-right:4px;"></span>記録なし</span>
+    </div>
+    <p style="font-size:12px;color:#aaa;margin:8px 0 0;">日付をタップすると詳細を表示</p>
+  </div>
+
+  <!-- 詳細タブ -->
+  <div id="tab-detail" class="tab-pane">
+    <h3 style="margin:0 0 10px;">今月の項目別達成率</h3>
+    <canvas id="radarChart"></canvas>
+
+    <h3 style="margin:18px 0 10px;">項目別 完了時刻推移</h3>
+    <div id="itemCharts"></div>
+  </div>
+</div>
+
+<script>
+let DEADLINE  = localStorage.getItem('deadline')  || "23:30";
+let DAY_START = localStorage.getItem('dayStart')   || "18:00";
+let DAY_RESET = localStorage.getItem('dayReset')   || "06:00";
+
+let status    = JSON.parse(localStorage.getItem('status')) || {};
+let logs      = JSON.parse(localStorage.getItem('logs'))   || [];
+let undoStack = JSON.parse(sessionStorage.getItem('undoStack')) || [];
+
+const DEFAULT_TASKS = [
+  {key:'bath',  label:'風呂'},
+  {key:'meds',  label:'服薬'},
+  {key:'phone', label:'スマホ終了'}
+];
+let tasks = JSON.parse(localStorage.getItem('tasks')) || DEFAULT_TASKS.map(t=>({...t}));
+
+// 後方互換移行
+(function migrateLabels(){
+  const old = localStorage.getItem('labels');
+  if (old && !localStorage.getItem('tasks')) {
+    const o = JSON.parse(old);
+    tasks = DEFAULT_TASKS.map(t => ({key:t.key, label: o[t.key]||t.label}));
+    localStorage.setItem('tasks', JSON.stringify(tasks));
+  }
+})();
+
+if (!status || typeof status !== 'object') status = {};
+tasks.forEach(t => { if (!(t.key in status)) status[t.key] = false; });
+
+// ===== コンディション（適応型リカバリー） =====
+// {date: 'normal' | 'tired' | 'rest'}
+let conditions = JSON.parse(localStorage.getItem('conditions')) || {};
+function saveConditions() { localStorage.setItem('conditions', JSON.stringify(conditions)); }
+function todayCondition() { return conditions[getTodayJST()] || 'normal'; }
+
+// その日の「必須課題」：ふつう＝全課題、おつかれ/休息日＝基本課題（上から3つ）のみ
+function requiredTasks() {
+  if (todayCondition() === 'normal') return tasks;
+  return tasks.slice(0, Math.min(3, tasks.length));
+}
+
+function saveTasks() { localStorage.setItem('tasks', JSON.stringify(tasks)); }
+function save() {
+  localStorage.setItem('status', JSON.stringify(status));
+  localStorage.setItem('logs',   JSON.stringify(logs));
+  sessionStorage.setItem('undoStack', JSON.stringify(undoStack));
+}
+
+// ===== 日付・時刻ユーティリティ =====
+function getTodayJST() {
+  const jst = new Date(new Date().getTime() + 9*60*60*1000);
+  return jst.toISOString().slice(0,10);
+}
+
+function timeToMinutesFromStart(time) {
+  const [th,tm] = time.split(':').map(Number);
+  const [sh,sm] = DAY_START.split(':').map(Number);
+  let t = th*60+tm, s = sh*60+sm;
+  if (t < s) t += 1440;
+  return t;
+}
+
+function isSuccess(time) {
+  const t = timeToMinutesFromStart(time);
+  const [dh,dm] = DEADLINE.split(':').map(Number);
+  const [sh,sm] = DAY_START.split(':').map(Number);
+  let d = dh*60+dm, s = sh*60+sm;
+  if (d < s) d += 1440;
+  return t <= d;
+}
+
+// 全ログのsuccessを再計算（期限変更時など）
+// ・休息日ログは期限で再判定しない（できなくても失敗にしない）
+// ・doneフラグがfalse（必須未完了）の日はsuccessにしない（旧データはdone未定義＝完了扱い）
+function recalcAllSuccess() {
+  logs = logs.map(l => {
+    if (!l.finish) return {...l, success:false};
+    if (l.mode === 'rest') return l;
+    const complete = (l.done !== undefined) ? l.done : true;
+    return {...l, success: complete && isSuccess(l.finish)};
+  });
+}
+
+// ===== タスク別月間達成率 =====
+function calcMonthlyRate(key) {
+  const now    = new Date();
+  const prefix = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  const monthLogs   = logs.filter(l => l.date.startsWith(prefix));
+  const successDays = monthLogs.filter(l => l.items && l.items[key]).length;
+  const daysPassed  = Math.max(1, now.getDate());
+  return Math.round((successDays / daysPassed) * 100);
+}
+
+// ===== ストリーク =====
+function calcStreak() { return logs.filter(l => l.success).length; }
+
+// ===== 月間バッジ（ごほうび） =====
+function monthlySuccessCount() {
+  const now = new Date();
+  const prefix = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  return logs.filter(l => l.date.startsWith(prefix) && l.success).length;
+}
+function monthlyBadge() {
+  const n = monthlySuccessCount();
+  if (n >= 20) return ' 🏆';
+  if (n >= 15) return ' 🥇';
+  if (n >= 10) return ' 🥈';
+  if (n >= 5)  return ' 🥉';
+  return '';
+}
+
+function renderStreak() {
+  const s = calcStreak();
+  const el = document.getElementById("streak");
+  el.innerText = `📈 成功日 ${s}日${monthlyBadge()}`;
+  el.style.color = s >= 3 ? "#1565c0" : "#f57c00";
+}
+
+// ===== 進捗バー（必須課題ベース） =====
+function renderProgress() {
+  const req   = requiredTasks();
+  const done  = req.filter(t => status[t.key]).length;
+  const total = req.length;
+  const extra = tasks.filter(t => !req.includes(t) && status[t.key]).length;
+  const pct   = total ? Math.round(done/total*100) : 0;
+  document.getElementById('progressBar').style.width = pct + '%';
+  document.getElementById('progressLabel').innerText = `${done} / ${total} 完了` + (extra ? `（＋任意 ${extra}）` : '');
+}
+
+// ===== タスクボタン描画 =====
+function renderLabels() {
+  const container = document.getElementById('taskButtons');
+  container.innerHTML = '';
+  const req = requiredTasks();
+  tasks.forEach(t => {
+    const btn  = document.createElement('button');
+    btn.id     = t.key + 'Btn';
+    const rate = calcMonthlyRate(t.key);
+    const optional = !req.includes(t);
+    if (status[t.key]) {
+      btn.className    = 'btn-task btn-on';
+      btn.style.background = '#4CAF50';
+      btn.style.color      = 'white';
+    } else {
+      btn.className    = 'btn-task' + (optional ? ' task-optional' : '');
+      btn.style.background = `linear-gradient(to right, #a5d6a7 ${rate}%, #e0e0e0 ${rate}%)`;
+      btn.style.color      = '#333';
+    }
+    btn.style.position = 'relative';
+    const tag = optional ? '<span style="font-size:11px;background:#eceff1;color:#78909c;border-radius:6px;padding:1px 6px;margin-right:6px;vertical-align:middle;">任意</span>' : '';
+    btn.innerHTML = `<span>${tag}${escapeHtml(t.label)}</span><span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);font-size:12px;color:${status[t.key]?'#e8f5e9':'#555'};">${rate}%</span>`;
+    btn.onclick = () => toggleTask(t.key);
+    container.appendChild(btn);
+  });
+  renderProgress();
+}
+
+function renderButtons() { renderLabels(); }
+
+// ===== ステータスメッセージ =====
+function updateStatusMsg() {
+  const c   = todayCondition();
+  const req = requiredTasks();
+  const allDone = req.length > 0 && req.every(t => status[t.key]);
+  const el = document.getElementById("statusMsg");
+  if (allDone) { el.innerText = c === 'rest' ? "休息日でもしっかり完了。えらい！🌙" : "完了"; return; }
+  if (c === 'tired')     el.innerText = "おつかれの日。基本課題だけでじゅうぶんです😌";
+  else if (c === 'rest') el.innerText = "今日は休息日。できなくてもOKな日です🌙";
+  else                   el.innerText = "余力を残して行動し課題の達成感に満たされましょう😊";
+}
+
+// 今日のログのdone/successをコンディションに応じて再評価
+function evaluateTodayLog() {
+  const today = getTodayJST();
+  const idx = logs.findIndex(l => l.date === today);
+  if (idx < 0) return;
+  const c   = todayCondition();
+  const req = requiredTasks();
+  const allDone = req.length > 0 && req.every(t => status[t.key]);
+  logs[idx].mode = c;
+  logs[idx].done = allDone;
+  // 休息日は期限を問わない（完了できたら成功、できなくても失敗記録なし）
+  logs[idx].success = allDone && (c === 'rest' ? true : isSuccess(logs[idx].finish));
+}
+
+// ===== コンディション切り替え =====
+function setCondition(c) {
+  conditions[getTodayJST()] = c;
+  saveConditions();
+  evaluateTodayLog();
+  save();
+  renderCondition();
+  renderLabels();
+  renderStreak();
+  refreshCharts();
+  updateStatusMsg();
+  autoBackupSnapshot('コンディション変更');
+}
+
+function renderCondition() {
+  const c = todayCondition();
+  const map = { normal:'condNormal', tired:'condTired', rest:'condRest' };
+  document.querySelectorAll('.cond-btn').forEach(b => b.className = 'cond-btn');
+  const active = document.getElementById(map[c]);
+  if (active) active.classList.add('active-' + c);
+  const hint = document.getElementById('condHint');
+  if (!hint) return;
+  if (c === 'tired')     hint.innerText = '基本課題（上から3つ）だけが必須。残りはできたらでOK。';
+  else if (c === 'rest') hint.innerText = 'できなくても記録に残りません。休むのも計画のうち。';
+  else                   hint.innerText = '';
+}
+
+// ===== タスクのトグル =====
+function toggleTask(type) {
+  undoStack.push({ status: JSON.stringify(status), logs: JSON.stringify(logs) });
+  const today = getTodayJST();
+
+  if (status[type]) {
+    status[type] = false;
+    const idx = logs.findIndex(l => l.date === today);
+    if (idx >= 0 && logs[idx].items) logs[idx].items[type] = false;
+    evaluateTodayLog();
+    save();
+    renderButtons(); renderStreak(); refreshCharts(); updateStatusMsg();
+    autoBackupSnapshot('課題取消');
+  } else {
+    status[type] = true;
+    const now  = new Date();
+    const time = now.toTimeString().slice(0,5);
+    let idx = logs.findIndex(l => l.date === today);
+    if (idx < 0) {
+      logs.push({ date:today, finish:time, success:false, done:false, mode:todayCondition(), items:{} });
+      idx = logs.length - 1;
+    }
+    if (!logs[idx].items) logs[idx].items = {};
+    logs[idx].items[type] = true;
+    logs[idx].finish = time;
+
+    const prevDone = logs[idx].done === true;
+    evaluateTodayLog();
+    save();
+    renderButtons(); renderStreak(); refreshCharts(); updateStatusMsg();
+
+    if (logs[idx].done && !prevDone) {
+      const reward = grantDailyReward(); // 1日1回のごほうびガチャ
+      autoBackupSnapshot('必須課題すべて完了');
+      showCompleteEffect(reward);
+    } else {
+      autoBackupSnapshot('課題完了');
+    }
+  }
+}
+
+// ===== リセット =====
+function showResetConfirm() { document.getElementById("resetConfirm").style.display = "block"; }
+function hideResetConfirm() { document.getElementById("resetConfirm").style.display = "none"; }
+
+function doReset() {
+  hideResetConfirm();
+  const today = getTodayJST();
+  logs = logs.filter(l => l.date !== today);
+  // statusリセット
+  const rs = {};
+  tasks.forEach(t => { rs[t.key] = false; });
+  status = rs;
+  // 今日のコンディションもリセット
+  delete conditions[today];
+  saveConditions();
+  undoStack = [];
+  save();
+  renderCondition();
+  renderLabels();
+  renderStreak();
+  refreshCharts();
+  updateStatusMsg();
+  autoBackupSnapshot('今日分リセット');
+}
+
+// ===== 設定パネル =====
+function renderLabelRows() {
+  const rows = document.getElementById('labelRows');
+  rows.innerHTML = '';
+  let dragSrcIdx = null;
+
+  tasks.forEach((t, i) => {
+    const isFixed = i < 3;
+    const row = document.createElement('div');
+    row.className = 'drag-row';
+    row.dataset.idx = i;
+    row.style.cssText = 'margin-bottom:12px;';
+    row.draggable = true;
+
+    const label = document.createElement('div');
+    label.style.cssText = 'font-size:15px;font-weight:bold;color:#333;margin-bottom:5px;text-align:left;';
+    label.innerText = `課題${i+1}`;
+
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;gap:6px;align-items:center;';
+
+    // ドラッグハンドル（3本線）
+    const handle = document.createElement('span');
+    handle.className = 'drag-handle';
+    handle.innerHTML = '&#9776;'; // ≡
+    handle.title = 'ドラッグして並べ替え';
+
+    const ta = document.createElement('textarea');
+    ta.id = 'labelInput_' + t.key;
+    ta.value = t.label;
+    ta.placeholder = '課題名を入力';
+    ta.style.cssText = 'flex:1;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:15px;resize:none;height:44px;line-height:1.4;box-sizing:border-box;';
+    ta.addEventListener('blur', () => applyLabel(t.key)); // フォーカスが外れたら自動保存
+
+    wrap.appendChild(handle);
+    wrap.appendChild(ta);
+
+    if (!isFixed) {
+      const btnD = document.createElement('button');
+      btnD.innerText = '－';
+      btnD.style.cssText = 'width:36px;height:44px;padding:0;font-size:20px;background:#fce4ec;color:#e53935;border-radius:8px;margin:0;flex-shrink:0;';
+      btnD.addEventListener('click', () => deleteTask(t.key));
+      wrap.appendChild(btnD);
+    }
+
+    row.appendChild(label);
+    row.appendChild(wrap);
+    rows.appendChild(row);
+
+    // ドラッグイベント
+    row.addEventListener('dragstart', e => {
+      dragSrcIdx = i;
+      row.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    row.addEventListener('dragend', () => {
+      row.classList.remove('dragging');
+      rows.querySelectorAll('.drag-row').forEach(r => r.classList.remove('drag-over'));
+    });
+    row.addEventListener('dragover', e => {
+      e.preventDefault();
+      rows.querySelectorAll('.drag-row').forEach(r => r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      const destIdx = parseInt(row.dataset.idx);
+      if (dragSrcIdx === null || dragSrcIdx === destIdx) return;
+      // 並べ替え
+      const moved = tasks.splice(dragSrcIdx, 1)[0];
+      tasks.splice(destIdx, 0, moved);
+      saveTasks();
+      renderLabels();
+      renderButtons();
+      renderLabelRows();
+    });
+  });
+
+  // ＋追加欄
+  const addRow = document.createElement('div');
+  addRow.style.cssText = 'margin-bottom:4px;';
+  const addLabel = document.createElement('div');
+  addLabel.style.cssText = 'font-size:15px;font-weight:bold;color:#333;margin-bottom:5px;text-align:left;';
+  addLabel.innerText = `課題${tasks.length+1}を追加`;
+  const addWrap = document.createElement('div');
+  addWrap.style.cssText = 'display:flex;gap:6px;align-items:center;';
+  const addTa = document.createElement('textarea');
+  addTa.id = 'newTaskInput';
+  addTa.placeholder = '新しい課題名';
+  addTa.style.cssText = 'width:66%;flex:none;padding:8px;border:1px solid #ddd;border-radius:8px;font-size:15px;resize:none;height:44px;line-height:1.4;box-sizing:border-box;';
+  const btnAdd = document.createElement('button');
+  btnAdd.innerText = '＋';
+  btnAdd.style.cssText = 'width:36px;height:44px;padding:0;font-size:22px;background:#e8f5e9;color:#4CAF50;border-radius:8px;margin:0;flex-shrink:0;';
+  btnAdd.addEventListener('click', addTask);
+  addWrap.appendChild(addTa);
+  addWrap.appendChild(btnAdd);
+  addRow.appendChild(addLabel);
+  addRow.appendChild(addWrap);
+  rows.appendChild(addRow);
+}
+
+function applyLabel(key) {
+  const el = document.getElementById('labelInput_' + key);
+  if (!el) return;
+  const val = el.value.trim();
+  const t = tasks.find(t => t.key === key);
+  if (!t || !val || val === t.label) return; // 変更がなければ何もしない
+  t.label = val;
+  saveTasks();
+  renderLabels();
+  autoBackupSnapshot('課題名変更');
+}
+
+function addTask() {
+  const inp = document.getElementById('newTaskInput');
+  const val = inp.value.trim();
+  if (!val) return;
+  const key = 'task_' + Date.now();
+  tasks.push({key, label:val});
+  status[key] = false;
+  saveTasks(); save();
+  renderLabels(); renderLabelRows();
+  autoBackupSnapshot('課題追加');
+}
+
+function deleteTask(key) {
+  const idx = tasks.findIndex(t => t.key === key);
+  if (idx === -1 || idx < 3) return;
+  tasks.splice(idx, 1);
+  delete status[key];
+  saveTasks(); save();
+  renderLabels(); renderButtons(); renderLabelRows();
+  autoBackupSnapshot('課題削除');
+}
+
+function openSettings() {
+  renderLabelRows();
+  document.getElementById('dayStartDisplay').innerText = DAY_START;
+  document.getElementById('dayStartInput').value       = DAY_START;
+  document.getElementById('dayResetDisplay').innerText = DAY_RESET;
+  document.getElementById('dayResetInput').value       = DAY_RESET;
+  document.getElementById('deadlineDisplay').innerText = DEADLINE;
+  document.getElementById('deadlineInput').value       = DEADLINE;
+  document.getElementById('manualDate').value  = getTodayJST();
+  document.getElementById('manualTime').value  = '';
+  document.getElementById('manualMsg').innerText = '';
+  renderManualLogList();
+  renderAutoBackupInfo();
+  renderSaisen();
+  document.getElementById('settingsPanel').style.display = 'flex';
+}
+// ----- 設定パネルの未保存変更チェック -----
+// 課題名・時間帯は自動保存になったため、未確定なのは「追加中の新規課題」のみ
+function hasUnsavedSettingsChanges() {
+  const newEl = document.getElementById('newTaskInput');
+  return !!(newEl && newEl.value.trim());
+}
+
+function closeSettings() {
+  if (hasUnsavedSettingsChanges()) {
+    document.getElementById('settingsCloseConfirm').style.display = 'flex';
+    return;
+  }
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+function hideSettingsCloseConfirm() {
+  document.getElementById('settingsCloseConfirm').style.display = 'none';
+}
+
+function discardAndCloseSettings() {
+  hideSettingsCloseConfirm();
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+function saveAndCloseSettings() {
+  // 入力中の新規課題を追加して閉じる（他は自動保存済み）
+  const newEl = document.getElementById('newTaskInput');
+  if (newEl && newEl.value.trim()) addTask();
+  hideSettingsCloseConfirm();
+  document.getElementById('settingsPanel').style.display = 'none';
+}
+
+function applyDeadline() {
+  const v = document.getElementById('deadlineInput').value; if (!v || v === DEADLINE) return;
+  DEADLINE = v; localStorage.setItem('deadline', DEADLINE);
+  document.getElementById('deadlineDisplay').innerText = DEADLINE;
+  recalcAllSuccess();
+  save(); renderStreak(); refreshCharts();
+  autoBackupSnapshot('完了期限時刻変更');
+}
+function applyDayStart() {
+  const v = document.getElementById('dayStartInput').value; if (!v || v === DAY_START) return;
+  DAY_START = v; localStorage.setItem('dayStart', DAY_START);
+  document.getElementById('dayStartDisplay').innerText = DAY_START;
+  recalcAllSuccess();
+  save(); renderStreak(); refreshCharts();
+  autoBackupSnapshot('開始時刻変更');
+}
+function applyDayReset() {
+  const v = document.getElementById('dayResetInput').value; if (!v || v === DAY_RESET) return;
+  DAY_RESET = v; localStorage.setItem('dayReset', DAY_RESET);
+  document.getElementById('dayResetDisplay').innerText = DAY_RESET;
+  refreshCharts();
+  autoBackupSnapshot('リセット時刻変更');
+}
+
+// ===== 過去データ手入力 =====
+function addManualLog() {
+  const dateVal = document.getElementById('manualDate').value;
+  const timeVal = document.getElementById('manualTime').value;
+  const msgEl   = document.getElementById('manualMsg');
+  if (!dateVal) { msgEl.style.color='#e53935'; msgEl.innerText='日付を入力してください'; return; }
+  if (!timeVal) { msgEl.style.color='#e53935'; msgEl.innerText='完了時刻を入力してください'; return; }
+  const entry = { date:dateVal, finish:timeVal, success:isSuccess(timeVal), done:true, items:{} };
+  tasks.forEach(t => { entry.items[t.key] = true; }); // 全完了として登録
+  const idx = logs.findIndex(l => l.date === dateVal);
+  if (idx >= 0) { logs[idx] = entry; msgEl.style.color='#1565c0'; msgEl.innerText=`${dateVal} を上書きしました`; }
+  else { logs.push(entry); logs.sort((a,b)=>a.date.localeCompare(b.date)); msgEl.style.color='#4CAF50'; msgEl.innerText=`${dateVal} を追加しました`; }
+  save(); renderManualLogList(); renderStreak(); refreshCharts();
+  autoBackupSnapshot('過去データ追加');
+}
+
+function renderManualLogList() {
+  const el = document.getElementById('manualLogList');
+  if (!el) return;
+  if (logs.length === 0) { el.innerHTML='<span style="color:#aaa;">データなし</span>'; return; }
+  const recent = logs.slice().reverse().slice(0,10);
+  el.innerHTML = '<div style="font-size:12px;color:#999;margin-bottom:4px;">直近の記録（最大10件）</div>' +
+    recent.map(l => `<div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #f0f0f0;font-size:13px;">
+      <span>${l.date}</span><span>${l.finish||''}</span>
+      <span style="color:${l.success?'#4CAF50':(l.mode==='rest'?'#0277bd':'#f57c00')}">${l.success?'✓ 成功':(l.mode==='rest'?'🌙 休息':'△ 時間外')}</span>
+      <button onclick="deleteManualLog('${l.date}')" style="width:auto;padding:2px 8px;font-size:11px;background:#f5f5f5;color:#e53935;margin:0;border-radius:4px;">削除</button>
+    </div>`).join('');
+}
+
+function deleteManualLog(date) {
+  logs = logs.filter(l => l.date !== date);
+  save(); renderManualLogList(); renderStreak(); refreshCharts();
+  const m = document.getElementById('manualMsg');
+  m.style.color='#888'; m.innerText=`${date} を削除しました`;
+  autoBackupSnapshot('過去データ削除');
+}
+
+// ===== バックアップ =====
+function exportBackup() {
+  const data = { version:2, exportedAt:new Date().toISOString(), logs, tasks, deadline:DEADLINE, dayStart:DAY_START, dayReset:DAY_RESET, memos, conditions, rewards };
+  const blob = new Blob([JSON.stringify(data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `routine_backup_${getTodayJST()}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+function importBackup(event) {
+  const file = event.target.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.logs || !Array.isArray(data.logs)) throw new Error();
+      logs = data.logs;
+      if (data.tasks) { tasks = data.tasks; saveTasks(); }
+      if (data.deadline) { DEADLINE = data.deadline; localStorage.setItem('deadline', DEADLINE); }
+      if (data.dayStart) { DAY_START = data.dayStart; localStorage.setItem('dayStart', DAY_START); }
+      if (data.dayReset) { DAY_RESET = data.dayReset; localStorage.setItem('dayReset', DAY_RESET); }
+      if (data.memos) { memos = data.memos; localStorage.setItem('memos', JSON.stringify(memos)); }
+      if (data.conditions) { conditions = data.conditions; saveConditions(); }
+      if (data.rewards) { rewards = data.rewards; saveRewards(); }
+      save(); renderCondition(); renderLabels(); renderStreak(); refreshCharts(); updateStatusMsg();
+      const m = document.getElementById('backupMsg');
+      m.style.color='#4CAF50'; m.innerText=`✓ 復元完了：${logs.length}件`;
+      event.target.value='';
+      autoBackupSnapshot('復元');
+    } catch(e) {
+      const m = document.getElementById('backupMsg');
+      m.style.color='#e53935'; m.innerText='復元失敗：正しいファイルを選択してください';
+    }
+  };
+  reader.readAsText(file);
+}
+
+// 記録操作・設定変更のたびに呼ばれる自動バックアップ。
+// ファイルダウンロードはせず、端末内（localStorage）に直近5件だけをローテーション保存する。
+// ダウンロードしたファイルを後から自動削除することはブラウザからはできないため、
+// この方式で「増えすぎない自動バックアップ」を実現している。
+const AUTO_BACKUP_LIMIT = 5;
+
+function autoBackupSnapshot(reason) {
+  const data = { version:2, exportedAt:new Date().toISOString(), logs, tasks, deadline:DEADLINE, dayStart:DAY_START, dayReset:DAY_RESET, memos, conditions, rewards };
+  let backups = [];
+  try { backups = JSON.parse(localStorage.getItem('autoBackups')) || []; } catch(e) { backups = []; }
+  backups.push({ at:data.exportedAt, reason: reason||'', data });
+  if (backups.length > AUTO_BACKUP_LIMIT) backups = backups.slice(backups.length - AUTO_BACKUP_LIMIT);
+  localStorage.setItem('autoBackups', JSON.stringify(backups));
+  localStorage.setItem('lastAutoBackup', getTodayJST());
+  renderAutoBackupInfo();
+}
+
+function renderAutoBackupInfo() {
+  const el = document.getElementById('autoBackupInfo');
+  if (!el) return;
+  let backups = [];
+  try { backups = JSON.parse(localStorage.getItem('autoBackups')) || []; } catch(e) { backups = []; }
+  if (backups.length === 0) {
+    el.innerHTML = '自動バックアップ：まだありません';
+    return;
+  }
+  const rows = backups.map((b, idx) => {
+    const d = new Date(b.at);
+    const label = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #f5f5f5;">
+      <span style="font-size:12px;color:#888;">${label}${b.reason?'（'+escapeHtml(b.reason)+'）':''}</span>
+      <button onclick="downloadAutoBackup(${idx})" style="width:auto;padding:2px 10px;font-size:11px;background:#e3f2fd;color:#1565c0;margin:0;border-radius:6px;">↓保存</button>
+    </div>`;
+  }).slice().reverse().join('');
+  el.innerHTML = `<div style="font-size:12px;color:#888;margin-bottom:4px;">自動バックアップ履歴（直近${backups.length}件、最大${AUTO_BACKUP_LIMIT}件保持）</div>${rows}`;
+}
+
+function downloadAutoBackup(idx) {
+  let backups = [];
+  try { backups = JSON.parse(localStorage.getItem('autoBackups')) || []; } catch(e) { backups = []; }
+  const b = backups[idx];
+  if (!b) return;
+  const blob = new Blob([JSON.stringify(b.data,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `routine_auto_${b.at.replace(/[:.]/g,'-')}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
+// ===== 過去メモデータ（入力欄は廃止。過去データはバックアップ用に保持） =====
+let memos = JSON.parse(localStorage.getItem('memos')) || {}; // {date: text}
+
+// ===== ごほうびコレクション（1日1回のガチャ式おまけ） =====
+// 必須課題を全完了した日に、ランダムで1体仲間が増える
+let rewards = JSON.parse(localStorage.getItem('rewards')) || []; // [{date, emoji, name, rarity}]
+function saveRewards() { localStorage.setItem('rewards', JSON.stringify(rewards)); }
+
+const REWARD_POOL = [
+  // rarity 1: ★（よく出る）
+  {emoji:'🐢', name:'コツコツガメ',   rarity:1}, {emoji:'🐿️', name:'ためこみリス',   rarity:1},
+  {emoji:'🐸', name:'まいにちガエル', rarity:1}, {emoji:'🐤', name:'おはようヒヨコ', rarity:1},
+  {emoji:'🐟', name:'ながれサカナ',   rarity:1}, {emoji:'🐜', name:'はたらきアリ',   rarity:1},
+  {emoji:'🍀', name:'よつばクローバー', rarity:1}, {emoji:'🌱', name:'ふたばの芽',   rarity:1},
+  // rarity 2: ★★（ときどき）
+  {emoji:'🦉', name:'よふかしフクロウ', rarity:2}, {emoji:'🐈', name:'きまぐれネコ', rarity:2},
+  {emoji:'🦔', name:'がんばりハリネズミ', rarity:2}, {emoji:'🐧', name:'ぺたぺたペンギン', rarity:2},
+  {emoji:'🌙', name:'みかづきさん',   rarity:2}, {emoji:'🍡', name:'ごほうびだんご', rarity:2},
+  // rarity 3: ★★★（レア！）
+  {emoji:'🦄', name:'ユニコーン',     rarity:3}, {emoji:'🐉', name:'りゅうじん',     rarity:3},
+  {emoji:'🌈', name:'にじのかけら',   rarity:3}, {emoji:'👑', name:'おうかん',       rarity:3}
+];
+
+function drawReward() {
+  const r = Math.random();
+  const rarity = r < 0.05 ? 3 : r < 0.30 ? 2 : 1;
+  const pool = REWARD_POOL.filter(p => p.rarity === rarity);
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// 同じ日に2回もらえないように日付で管理（取り消し→再完了でも増えない）
+function grantDailyReward() {
+  const today = getTodayJST();
+  if (rewards.some(r => r.date === today)) return null;
+  const item = drawReward();
+  rewards.push({ date: today, emoji: item.emoji, name: item.name, rarity: item.rarity });
+  saveRewards();
+  return item;
+}
+
+function rarityStars(n) { return '★'.repeat(n); }
+
+function showRewardPopup() {
+  const el = document.getElementById('rewardPopupContent');
+  const counts = {};
+  rewards.forEach(r => { counts[r.emoji] = (counts[r.emoji] || 0) + 1; });
+  let html = `<div style="font-size:13px;color:#555;margin-bottom:10px;text-align:left;">集めた仲間：<b>${rewards.length}体</b>（${Object.keys(counts).length} / ${REWARD_POOL.length}種類）</div>`;
+  html += '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">';
+  REWARD_POOL.forEach(p => {
+    const n = counts[p.emoji] || 0;
+    if (n > 0) {
+      html += `<div style="background:#fafafa;border:1px solid #f0e6c8;border-radius:12px;padding:8px 4px;">
+        <div style="font-size:28px;">${p.emoji}</div>
+        <div style="font-size:11px;color:#555;font-weight:bold;">${p.name}</div>
+        <div style="font-size:10px;color:#f5a623;">${rarityStars(p.rarity)}${n>1?` ×${n}`:''}</div>
+      </div>`;
+    } else {
+      html += `<div style="background:#f5f5f5;border-radius:12px;padding:8px 4px;opacity:0.6;">
+        <div style="font-size:28px;filter:grayscale(1);opacity:0.35;">❓</div>
+        <div style="font-size:11px;color:#bbb;">？？？</div>
+        <div style="font-size:10px;color:#ccc;">${rarityStars(p.rarity)}</div>
+      </div>`;
+    }
+  });
+  html += '</div>';
+  el.innerHTML = html;
+  document.getElementById('rewardPopup').style.display = 'flex';
+}
+function closeRewardPopup() { document.getElementById('rewardPopup').style.display = 'none'; }
+
+// ===== お賽銭（達成後の感謝の応援） =====
+// URLを設定すると設定パネルにリンクが表示されます（例：'https://buymeacoffee.com/xxxx'）
+const SAISEN_URL = '';
+
+function renderSaisen() {
+  const el = document.getElementById('saisenArea');
+  if (!el) return;
+  if (SAISEN_URL) {
+    el.innerHTML = `<a href="${SAISEN_URL}" target="_blank" rel="noopener" style="display:block;padding:11px;background:#fff8e1;color:#f57c00;border-radius:10px;font-size:15px;text-decoration:none;font-weight:bold;">⛩ お賽銭を納める（外部サイトが開きます）</a>`;
+  } else {
+    el.innerHTML = `<div style="padding:11px;background:#f5f5f5;color:#aaa;border-radius:10px;font-size:14px;">⛩ お賽銭箱は準備中です</div>`;
+  }
+}
+
+function escapeHtml(str) {
+  return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+// ===== AI分析（ポップアップ表示） =====
+function successCountBetween(from, to) {
+  return logs.filter(l => {
+    const d = new Date(l.date + 'T00:00:00');
+    return d >= from && d < to && l.success;
+  }).length;
+}
+
+function buildAnalysis() {
+  if (logs.length < 3) {
+    return '<p style="margin:0;">まだデータが少なめです。<br>3日以上たまると傾向を分析できます😊</p>';
+  }
+  let html = '';
+
+  // 全体成功率（休息日は分母から除外＝できなかった記録を溜めない）
+  const judged = logs.filter(l => l.mode !== 'rest' || l.success);
+  const rate = judged.length ? Math.round(judged.filter(l=>l.success).length / judged.length * 100) : 0;
+  html += `<div style="margin-bottom:10px;"><b>全体成功率：${rate}%</b><span style="font-size:12px;color:#999;">（休息日は除外して計算）</span></div>`;
+
+  // 直近7日 vs その前7日
+  const dayMs = 86400000, now = new Date();
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const w1 = new Date(t0 - 7*dayMs), w2 = new Date(t0 - 14*dayMs);
+  const recent = successCountBetween(w1, t0);
+  const prev   = successCountBetween(w2, w1);
+  const diff   = recent - prev;
+  const trend  = diff > 0 ? '<span style="color:#4CAF50;">▲ 改善</span>' : diff < 0 ? '<span style="color:#f57c00;">▼ ペースダウン</span>' : '<span style="color:#999;">→ 横ばい</span>';
+  html += `<div style="margin-bottom:10px;">直近7日の成功 <b>${recent}件</b>（その前7日：${prev}件 ${trend}）</div>`;
+  if (diff < 0) {
+    html += `<div style="margin-bottom:10px;background:#e1f5fe;border-radius:10px;padding:10px;font-size:13px;color:#0277bd;">ペースが落ちた週は体調のサインかもしれません。「😪おつかれ」「🌙休息日」でハードルを下げるのも立派な作戦です。</div>`;
+  }
+
+  // 項目別達成率 ＋ 目標粒度アドバイス
+  const rates = tasks.map(t => ({ label: t.label, rate: calcMonthlyRate(t.key) }));
+  html += '<div style="font-weight:bold;margin-bottom:4px;">項目別（今月）</div>';
+  html += rates.map(r => `<div style="font-size:13px;color:#555;">・${escapeHtml(r.label)}：${r.rate}%</div>`).join('');
+  const low = rates.filter(r => r.rate < 50).sort((a,b) => a.rate - b.rate)[0];
+  if (low) {
+    html += `<div style="margin-top:10px;background:#fff8e1;border-radius:10px;padding:10px;font-size:13px;">💡 <b>「${escapeHtml(low.label)}」</b>（${low.rate}%）は課題の粒度が大きいのかもしれません。「準備する」「終わらせる」のように<b>2つの小さい課題に分ける</b>と、着手のハードルが下がって続けやすくなります。</div>`;
+  }
+
+  // 休息日の使い方
+  const restCount = Object.values(conditions).filter(c => c === 'rest').length;
+  if (restCount > 0) {
+    html += `<div style="margin-top:10px;font-size:13px;color:#0277bd;">🌙 休息日をこれまで${restCount}回使えています。休むのも計画のうち、いい調整です。</div>`;
+  } else {
+    html += `<div style="margin-top:10px;font-size:13px;color:#0277bd;">🌙 睡眠が短かった日は「おつかれ」「休息日」を選んでOK。できない日を作らないことより、翌日戻ってくることが大切です。</div>`;
+  }
+  return html;
+}
+
+function showAnalysis() {
+  document.getElementById('aiPopupContent').innerHTML = buildAnalysis();
+  document.getElementById('aiPopup').style.display = 'flex';
+}
+function closeAiPopup() { document.getElementById('aiPopup').style.display = 'none'; }
+
+// ===== タブ切り替え =====
+function switchTab(name) {
+  document.querySelectorAll('.tab-btn').forEach((b,i) => {
+    b.classList.toggle('active', ['summary','detail'][i] === name);
+  });
+  document.querySelectorAll('.tab-pane').forEach(p => {
+    p.classList.toggle('active', p.id === 'tab-' + name);
+  });
+  if (name === 'detail') renderDetailTab();
+}
+
+// ===== グラフ =====
+let lineChartInstance = null;
+let radarChartInstance = null;
+let itemChartInstances = [];
+
+function renderLine() {
+  const last = logs.filter(l=>l.finish).slice(-7);
+  const ctx  = document.getElementById('lineChart');
+  if (lineChartInstance) { lineChartInstance.destroy(); lineChartInstance = null; }
+  if (last.length === 0) return;
+  const [sh] = DAY_START.split(':').map(Number);
+  const [rh] = DAY_RESET.split(':').map(Number);
+  const yMin = sh, yMax = rh < sh ? rh+24 : rh;
+  const labels = last.map(l=>l.date.slice(5));
+  const data   = last.map(l => { const [h,m]=l.finish.split(':').map(Number); const v=h+m/60; return v<sh?v+24:v; });
+  const g = ctx.getContext('2d').createLinearGradient(0, 0, 0, 260);
+  g.addColorStop(0, 'rgba(76,175,80,0.30)');
+  g.addColorStop(1, 'rgba(76,175,80,0.02)');
+  lineChartInstance = new Chart(ctx, {
+    type:'line',
+    data:{ labels, datasets:[{ label:'完了時刻', data, borderColor:'#4CAF50', borderWidth:2.5, backgroundColor:g, tension:0.35, fill:true, pointRadius:5, pointHoverRadius:7, pointBorderColor:'#fff', pointBorderWidth:2,
+      pointBackgroundColor: last.map(l => l.success ? '#4CAF50' : (l.mode==='rest' ? '#4fc3f7' : '#ffb74d')) }] },
+    options:{ scales:{ y:{ min:yMin, max:yMax, ticks:{ stepSize:1, callback:v=>{ const h=v>=24?v-24:v; return `${Math.floor(h)}:00`; } }, grid:{color:'rgba(0,0,0,0.05)'} }, x:{ grid:{display:false} } },
+      plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>{const v=ctx.parsed.y;const h=v>=24?v-24:v;const hh=Math.floor(h);const mm=String(Math.round((h%1)*60)).padStart(2,'0');return `完了: ${v>=24?'翌':''}${hh}:${mm}`;}}} } }
+  });
+}
+
+// ===== 週間ミニ統計チップ =====
+function renderWeeklyChips() {
+  const el = document.getElementById('weeklyChips');
+  if (!el) return;
+  const dayMs = 86400000, now = new Date();
+  const t0 = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const w1 = new Date(t0 - 7*dayMs), w2 = new Date(t0 - 14*dayMs);
+  const recent = successCountBetween(w1, t0);
+  const prev   = successCountBetween(w2, w1);
+  const diff   = recent - prev;
+  const arrow  = diff > 0 ? '<span style="color:#4CAF50;">▲</span>' : diff < 0 ? '<span style="color:#f57c00;">▼</span>' : '<span style="color:#999;">→</span>';
+  el.innerHTML = `
+    <div class="stat-chip">今週の成功<b style="color:#2e7d32;">${recent}<span style="font-size:12px;font-weight:normal;">/7日</span></b></div>
+    <div class="stat-chip">先週比 ${arrow}<b>${diff > 0 ? '+' : ''}${diff}</b></div>
+    <div class="stat-chip">今月の成功<b style="color:#1565c0;">${monthlySuccessCount()}日${monthlyBadge()}</b></div>`;
+}
+
+// カレンダー
+let calYear=0, calMonth=0;
+function initCalendar() { const n=new Date(); calYear=n.getFullYear(); calMonth=n.getMonth(); }
+function calPrev() { calMonth--; if(calMonth<0){calMonth=11;calYear--;} renderHeatmap(); }
+function calNext() { calMonth++; if(calMonth>11){calMonth=0;calYear++;} renderHeatmap(); }
+
+function renderHeatmap() {
+  if (calYear===0) initCalendar();
+  const today=getTodayJST(), grid=document.getElementById('calGrid');
+  grid.innerHTML='';
+  document.getElementById('calTitle').innerText=`${calYear}年${calMonth+1}月`;
+  const logMap={};
+  logs.forEach(l=>{ logMap[l.date]=l; });
+  const firstDay=new Date(calYear,calMonth,1).getDay();
+  const lastDate=new Date(calYear,calMonth+1,0).getDate();
+  for(let i=0;i<firstDay;i++){const e=document.createElement('div');e.className='cal-cell cal-empty';grid.appendChild(e);}
+  for(let d=1;d<=lastDate;d++){
+    const mm=String(calMonth+1).padStart(2,'0'), dd=String(d).padStart(2,'0');
+    const dateStr=`${calYear}-${mm}-${dd}`, log=logMap[dateStr];
+    let cls='cal-none';
+    if(log) cls = log.success ? 'cal-good' : (log.mode==='rest' ? 'cal-rest' : 'cal-bad');
+    else if (conditions[dateStr]==='rest') cls='cal-rest'; // 記録なしでも休息日宣言があれば休息色
+    const el=document.createElement('div');
+    el.className=`cal-cell ${cls}${dateStr===today?' cal-today':''}`;
+    el.innerText=d;
+    if(log) el.onclick=()=>showCalPopup(dateStr, log);
+    grid.appendChild(el);
+  }
+}
+
+// カレンダー詳細ポップアップ
+function showCalPopup(dateStr, log) {
+  document.getElementById('calPopupDate').innerText = dateStr;
+  const content = document.getElementById('calPopupContent');
+  let statusTxt, statusColor;
+  if (log.success)            { statusTxt = '✓ 成功';   statusColor = '#4CAF50'; }
+  else if (log.mode==='rest') { statusTxt = '🌙 休息日'; statusColor = '#0277bd'; }
+  else                        { statusTxt = '△ 時間外'; statusColor = '#f57c00'; }
+  let html = `<div style="font-size:14px;color:#555;margin-bottom:10px;">完了時刻：<b>${log.finish||'不明'}</b> &nbsp; <span style="color:${statusColor}">${statusTxt}</span></div>`;
+  html += '<div style="font-size:14px;font-weight:bold;margin-bottom:6px;text-align:left;">項目別達成</div>';
+  tasks.forEach(t => {
+    const done = log.items && log.items[t.key];
+    html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+      <span style="display:inline-block;width:16px;height:16px;border-radius:50%;background:${done?'#4CAF50':'#e0e0e0'};flex-shrink:0;"></span>
+      <span style="font-size:14px;color:${done?'#333':'#aaa'};">${t.label}</span>
+    </div>`;
+  });
+  content.innerHTML = html;
+  document.getElementById('calPopup').style.display = 'flex';
+}
+function closeCalPopup() { document.getElementById('calPopup').style.display = 'none'; }
+
+// ===== 詳細タブ =====
+function renderDetailTab() {
+  renderRadarChart();
+  renderItemCharts();
+  renderMemoHistory();
+}
+
+function renderRadarChart() {
+  const ctx = document.getElementById('radarChart');
+  if (radarChartInstance) { radarChartInstance.destroy(); radarChartInstance = null; }
+  const labels = tasks.map(t=>t.label);
+  const data   = tasks.map(t=>calcMonthlyRate(t.key));
+  radarChartInstance = new Chart(ctx, {
+    type:'radar',
+    data:{ labels, datasets:[{ label:'今月達成率(%)', data, backgroundColor:'rgba(76,175,80,0.2)', borderColor:'#4CAF50', pointBackgroundColor:'#4CAF50', pointRadius:4 }] },
+    options:{ scales:{ r:{ min:0, max:100, ticks:{stepSize:20,font:{size:10}}, pointLabels:{font:{size:13}} } }, plugins:{legend:{display:false}} }
+  });
+}
+
+function renderItemCharts() {
+  // 既存のチャートを破棄
+  itemChartInstances.forEach(c=>c.destroy());
+  itemChartInstances=[];
+  const container = document.getElementById('itemCharts');
+  container.innerHTML='';
+
+  const last7 = logs.filter(l=>l.finish).slice(-7);
+  if (last7.length===0) { container.innerHTML='<p style="color:#aaa;font-size:14px;">データがありません</p>'; return; }
+
+  const colors = ['#4CAF50','#2196F3','#FF9800','#E91E63','#9C27B0','#00BCD4'];
+  const [sh]=DAY_START.split(':').map(Number);
+  const [rh]=DAY_RESET.split(':').map(Number);
+  const yMin=sh, yMax=rh<sh?rh+24:rh;
+
+  tasks.forEach((t,i) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'margin-bottom:20px;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-size:14px;font-weight:bold;color:#555;margin-bottom:6px;text-align:left;';
+    title.innerText = t.label;
+    const canvas = document.createElement('canvas');
+    canvas.id = 'itemChart_'+t.key;
+    wrap.appendChild(title); wrap.appendChild(canvas);
+    container.appendChild(wrap);
+
+    const color = colors[i % colors.length];
+    const labels = last7.map(l=>l.date.slice(5));
+    const data   = last7.map(l => {
+      if (!l.items || !l.items[t.key] || !l.finish) return null;
+      const [h,m]=l.finish.split(':').map(Number); const v=h+m/60; return v<sh?v+24:v;
+    });
+
+    const chart = new Chart(canvas, {
+      type:'line',
+      data:{ labels, datasets:[{ label:t.label, data, borderColor:color, backgroundColor:color+'33', tension:0.3, fill:false, pointRadius:5, spanGaps:false,
+        pointBackgroundColor: data.map((v,idx)=>{ if(v===null)return color; const log=last7[idx]; return log&&log.success?'#4CAF50':'#e53935'; }) }] },
+      options:{ scales:{ y:{ min:yMin, max:yMax, ticks:{stepSize:2,callback:v=>{const h=v>=24?v-24:v;return `${Math.floor(h)}:00`;}} } },
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{label:ctx=>{const v=ctx.parsed.y;if(v===null)return '未完了';const h=v>=24?v-24:v;const hh=Math.floor(h);const mm=String(Math.round((h%1)*60)).padStart(2,'0');return `${v>=24?'翌':''}${hh}:${mm}`;}}} } }
+    });
+    itemChartInstances.push(chart);
+  });
+}
+
+function refreshCharts() { renderLine(); renderHeatmap(); renderWeeklyChips(); }
+
+// ===== 全完了エフェクト =====
+function showCompleteEffect(reward) {
+  const overlay = document.getElementById('completeOverlay');
+  const thumb   = document.getElementById('thumbsUp');
+
+  // 紙吹雪なし・テキストのみ（称賛メッセージはランダム）＋ごほうび獲得表示
+  const praises = ['よくできました','今日もえらい！','いいリズムです','積み重ねが力になる','おつかれさま、完璧です'];
+  const praise  = todayCondition() === 'rest' ? '休息日でもここまでできた！' : praises[Math.floor(Math.random()*praises.length)];
+  const rewardHtml = reward
+    ? `<div style="margin-top:10px;font-size:15px;background:rgba(255,255,255,0.95);color:#f57c00;border-radius:14px;padding:8px 16px;display:inline-block;">🎁 <b>${reward.emoji} ${reward.name}</b>（${rarityStars(reward.rarity)}）が仲間になった！</div>`
+    : '';
+  overlay.innerHTML = `<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,calc(-50% + 80px));font-size:22px;font-weight:bold;color:white;text-shadow:0 2px 8px rgba(0,0,0,0.4);white-space:nowrap;z-index:201;text-align:center;">${praise}${rewardHtml}</div>`;
+  overlay.style.background = 'rgba(0,0,0,0.25)';
+  overlay.style.display = 'block';
+  thumb.style.display = 'block';
+  setTimeout(() => { thumb.style.transform = 'translate(-50%,-50%) scale(1)'; }, 50);
+
+  // 3秒後にフェードアウト
+  setTimeout(() => {
+    thumb.style.transition    = 'transform 0.4s ease-in, opacity 0.4s ease-in';
+    overlay.style.transition  = 'opacity 0.4s ease-in';
+    thumb.style.opacity       = '0';
+    thumb.style.transform     = 'translate(-50%,-50%) scale(0.5)';
+    overlay.style.opacity     = '0';
+    setTimeout(() => {
+      overlay.style.display    = 'none';
+      overlay.style.opacity    = '1';
+      overlay.style.transition = '';
+      overlay.innerHTML        = '';
+      overlay.style.background = 'transparent';
+      thumb.style.display      = 'none';
+      thumb.style.transform    = 'translate(-50%,-50%) scale(0)';
+      thumb.style.opacity      = '1';
+    }, 400);
+  }, 3000);
+}
+
+// ===== 起動時リセット =====
+function checkAndResetOnLaunch() {
+  const rs={}; tasks.forEach(t=>{rs[t.key]=false;}); status=rs; undoStack=[];
+  recalcAllSuccess();
+  save();
+}
+
+// ===== 初期表示 =====
+window.onload = () => {
+  checkAndResetOnLaunch();
+  renderCondition();
+  renderLabels();
+  renderLine();
+  renderHeatmap();
+  renderWeeklyChips();
+  renderStreak();
+  updateStatusMsg();
+};
+</script>
+</body>
+</html>
